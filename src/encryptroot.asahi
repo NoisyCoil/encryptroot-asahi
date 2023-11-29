@@ -1,0 +1,362 @@
+#!/bin/sh
+
+set -e
+
+THIS_SCRIPT_NAME="encryptroot.asahi"
+
+print_usage() {
+    echo "Usage: $THIS_SCRIPT_NAME [ -d | --device-name ] [ -h | --help ] [ -v | --verbose ] ROOTDISK BOOTDISK"
+}
+
+error() {
+    echo "Error: $1" >&2
+}
+
+exit_error() {
+    error "$1"
+    exit 1
+}
+
+exit_error_with_usage() {
+    error "$1"
+    echo >&2
+    print_usage >&2
+    exit 1
+}
+
+PARGS=0
+while [ $# -gt 0 ]; do
+    case "$1" in
+    -d | --device-name)
+        LUKS_MAPPED_DEVICE="$2"
+        shift
+        shift
+        ;;
+    -h | --help)
+        print_usage
+        exit
+        ;;
+    # Magic chroot option. For internal use only, do not use manually.
+    --mco-43f12e50)
+        ENCRYPTROOT_ASAHI_CHROOT_43F12E50=1
+        shift
+        ;;
+    -v | --verbose)
+        VERBOSE="--verbose"
+        shift
+        ;;
+    -*)
+        exit_error_with_usage "option $1 not recognized"
+        ;;
+    *)
+        case "$PARGS" in
+        0)
+            ROOTDISK="$1"
+            PARGS=1
+            shift
+            ;;
+        1)
+            BOOTDISK="$1"
+            PARGS=2
+            shift
+            ;;
+        2)
+            exit_error_with_usage "too many arguments"
+            ;;
+        esac
+        ;;
+    esac
+done
+
+check_root() {
+    [ "$(id -u)" = "0" ] || exit_error "this script must be run as root"
+}
+
+check_arguments() {
+    [ -n "$ROOTDISK" ] || exit_error "missing mandatory argument ROOTDISK"
+    [ -n "$BOOTDISK" ] || exit_error "missing mandatory argument BOOTDISK"
+}
+
+check_dependencies() {
+    for c in arch-chroot btrfs cryptsetup lsblk uuidgen; do
+        command -v $c >/dev/null 2>&1 || exit_error "command '$c' not installed or not on path"
+    done
+}
+
+explain_and_warn() {
+    echo "*** WARNING ***"
+    echo
+    echo "Please read carefully the following advisory before going any further."
+    echo
+    echo "This script is not meant to be executed from your Fedora Asahi installation, but"
+    echo "rather from an external USB drive hosting an Asahi OS, or from a VM running on"
+    echo "macOS."
+    echo
+    echo "If everything goes right, this script will encrypt your Fedora Asahi root"
+    echo "partition without deleting its contents. The script has safeguards to prevent"
+    echo "itself from messing around with the macOS partitions (e.g. it checks that the"
+    echo "root and boot partitions have the expected filesystem and content), but other"
+    echo "than that, in general, it is by no means 100% foolproof."
+    echo "You as the user of this script are expected to be able to manually recover from"
+    echo "an inconsistent state in which it may leave your system. In principle, manual"
+    echo "recovery is possible at every steps of the process. Read the manpage for more"
+    echo "information."
+    echo
+    echo "Unless you've just installed Fedora Asahi, backup your system before going ahead."
+    echo "If you are not able to manually recover from failure, don't run this script."
+    echo "By running this script you agree not to hold its author accountable for any loss"
+    echo "of data or any other form of damage resulting from its use."
+    echo
+    echo "Hit ENTER to continue or ctrl-c to abort."
+    read -r CONFIRM
+}
+
+rootdisk_check() {
+    ROOTLABEL="$(lsblk -ndo LABEL "$ROOTDISK" 2>/dev/null)"
+    [ "$ROOTLABEL" = "fedora" ] || exit_error "expected root disk label 'fedora', found '$ROOTLABEL'"
+    for MNTPOINT in $(findmnt -no TARGET "$ROOTDISK" 2>/dev/null); do
+        [ "$MNTPOINT" = "/" ] && exit_error "cannot encrypt root disk currently mounted on /"
+    done
+    unset MNTPOINT
+    [ -z "$VERBOSE" ] || echo "Checking root disk content..."
+    TMPDIR="$(mktemp -d)"
+    mount "$ROOTDISK" "$TMPDIR" || exit_error "could not mount root disk $ROOTDISK for preliminary checks"
+    ROOTSUBVOLS="$(btrfs subvolume list "$TMPDIR" 2>/dev/null | rev | cut -d" " -f1 | rev | sort | tr \[:space:\] " ")"
+    [ -f "$TMPDIR/root/etc/default/grub" ] && GRUB2_DEFAULT_FILE_FOUND=1
+    [ -L "$TMPDIR/root/etc/grub2.cfg" ] && GRUB2_ETC_LINK_FOUND=1
+    [ -f "$TMPDIR/root/usr/sbin/grub2-mkconfig" ] && GRUB2_MKCONFIG_FOUND=1
+    [ -f "$TMPDIR/root/usr/bin/dracut" ] && DRACUT_FOUND=1
+    umount "$TMPDIR" || exit_error "could not unmount root disk $ROOTDISK after preliminary checks"
+    rm -df "$TMPDIR" || true
+    unset TMPDIR
+    case "$ROOTSUBVOLS" in
+    *home*root*) ;;
+    *) exit_error "could not find root and home subvolumes in root disk btrfs filesystem" ;;
+    esac
+    [ "$GRUB2_DEFAULT_FILE_FOUND" = "1" ] || exit_error "could not find /etc/default/grub in root disk filesystem"
+    [ "$GRUB2_ETC_LINK_FOUND" = "1" ] || exit_error "could not find /etc/grub2.cfg in root disk filesystem"
+    [ "$GRUB2_MKCONFIG_FOUND" = "1" ] || exit_error "could not find /usr/sbin/grub2-mkconfig in root disk filesystem"
+    [ "$DRACUT_FOUND" = "1" ] || exit_error "could not find /usr/bin/dracut in root disk filesystem"
+}
+
+rootdisk_luks_check_cleanup() {
+    [ -b "/dev/mapper/$MAPPED_ROOTDISK" ] &&
+        { cryptsetup close "$MAPPED_ROOTDISK" || exit_error "could not close LUKS device $MAPPED_ROOTDISK after preliminary checks"; }
+}
+
+rootdisk_luks_check() {
+    if cryptsetup luksDump "$ROOTDISK" 2>/dev/null | grep -E "Requirements:\s*online-reencrypt" >/dev/null 2>&1; then
+        ENCRYPTROOT_ASAHI_RESUME_REENCRYPTION=1
+        echo
+        echo "It looks like you're trying to resume a previously interrupted operation."
+    else
+        ENCRYPTROOT_ASAHI_SKIP_REENCRYPTION=1
+        echo
+        echo "If this is the first time you run $THIS_SCRIPT_NAME, you've probably selected"
+        echo "the wrong root disk and you should hit ctrl+c to abort. If instead you are"
+        echo "trying to resume a previously interrupted operation, hit ENTER to continue."
+        read -r CONFIRM
+    fi
+    echo "To make sure all things are in order, we're going to have a look inside your root"
+    echo "disk. Please enter your root disk password when asked to do so."
+    echo
+    OLD_ROOTDISK="$ROOTDISK"
+    MAPPED_ROOTDISK="fedora-root-$(uuidgen | head -c 8)"
+    ROOTDISK="/dev/mapper/$MAPPED_ROOTDISK"
+    trap 'rootdisk_luks_check_cleanup; exit 1;' EXIT INT TERM QUIT HUP ABRT
+    cryptsetup open "$OLD_ROOTDISK" "$MAPPED_ROOTDISK" || exit_error "could not decrypt LUKS device $OLD_ROOTDISK for preliminary checks"
+    rootdisk_check
+    trap - EXIT INT TERM QUIT HUP ABRT
+    rootdisk_luks_check_cleanup
+    ROOTDISK="$OLD_ROOTDISK"
+    unset OLD_ROOTDISK
+}
+
+bootdisk_content_check() {
+    [ -z "$VERBOSE" ] || echo "Checking boot disk content..."
+    TMPDIR="$(mktemp -d)"
+    mount "$BOOTDISK" "$TMPDIR" || exit_error "could not mount boot disk $BOOTDISK for preliminary checks"
+    [ -d "$TMPDIR/grub2" ] && GRUB2_DIR_FOUND=1
+    umount "$TMPDIR" || exit_error "could not unmount boot disk $BOOTDISK after preliminary checks"
+    rm -df "$TMPDIR" || true
+    unset TMPDIR
+    [ "$GRUB2_DIR_FOUND" = "1" ] || exit_error "could not find grub2 directory in boot disk filesystem"
+}
+
+check_disks() {
+    # Root disk checks
+    lsblk -nd "$ROOTDISK" >/dev/null 2>&1 || exit_error "root disk $ROOTDISK not found"
+    [ -z "$VERBOSE" ] || echo "Checking root disk filesystem layout..."
+    ROOTFS="$(lsblk -ndo FSTYPE "$ROOTDISK" 2>/dev/null)"
+    case "$ROOTFS" in
+    btrfs)
+        rootdisk_check
+        ;;
+    crypto_LUKS)
+        rootdisk_luks_check
+        ;;
+    *)
+        exit_error "expected btrfs root disk filesystem, found '$ROOTFS'"
+        ;;
+    esac
+    # Boot disk checks
+    lsblk -nd "$BOOTDISK" >/dev/null 2>&1 || exit_error "boot disk $BOOTDISK not found"
+    [ -z "$VERBOSE" ] || echo "Checking boot disk filesystem layout..."
+    BOOTFS="$(lsblk -ndo FSTYPE "$BOOTDISK" 2>/dev/null)"
+    BOOTLABEL="$(lsblk -ndo LABEL "$BOOTDISK" 2>/dev/null)"
+    [ "$BOOTFS" = "ext4" ] || exit_error "expected ext4 boot disk filesystem, found '$BOOTFS'"
+    [ "$BOOTLABEL" = "BOOT" ] || exit_error "expected boot disk label 'BOOT', found '$BOOTLABEL'"
+    bootdisk_content_check
+    # User confirmation
+    [ -z "$VERBOSE" ] || echo
+    echo "We are going to encrypt $ROOTDISK and use $BOOTDISK as the boot disk."
+    echo "You will find their details below."
+    echo
+    lsblk -o NAME,FSTYPE,LABEL,UUID,SIZE "$ROOTDISK" "$BOOTDISK"
+    echo
+    echo "Hit ENTER to confirm and continue or ctrl-c to abort."
+    read -r CONFIRM
+    [ -z "$CONFIRM" ] || exit
+}
+
+fs_shrink_cleanup() {
+    umount "$TMPDIR" || exit_error "could not unmount root disk $ROOTDISK after filesystem resizing"
+    rm -df "$TMPDIR"
+}
+
+fs_shrink() {
+    { [ -n "$ENCRYPTROOT_ASAHI_RESUME_REENCRYPTION" ] ||
+        [ -n "$ENCRYPTROOT_ASAHI_SKIP_REENCRYPTION" ]; } && return
+    TMPDIR="$(mktemp -d)"
+    mount "$ROOTDISK" "$TMPDIR" || exit_error "could not mount root disk $ROOTDISK for filesystem resizing"
+    if btrfs device usage "$TMPDIR" 2>/dev/null | grep -E "Device slack:\s+32.00MiB" >/dev/null 2>&1; then
+        [ -z "$VERBOSE" ] || echo "Skipping root disk filesystem shrinking (already done)."
+    else
+        [ -z "$VERBOSE" ] || echo "Shrinking root disk filesystem..."
+        trap 'fs_shrink_cleanup; exit 1;' EXIT INT TERM QUIT HUP ABRT
+        btrfs filesystem resize -32M "$TMPDIR" || exit_error "could not shrink the root disk btrfs filesystem to make room for the LUKS headers"
+        trap - EXIT INT TERM QUIT HUP ABRT
+    fi
+    fs_shrink_cleanup
+    unset TMPDIR
+}
+
+encrypt_root() {
+    if [ -n "$ENCRYPTROOT_ASAHI_RESUME_REENCRYPTION" ]; then
+        [ -z "$VERBOSE" ] || echo "Resuming root disk encryption..."
+        [ -z "$VERBOSE" ] || echo
+        echo "Sorry about this, but we need your root disk password yet again (two more times actually)..."
+        cryptsetup reencrypt --encrypt --reduce-device-size 32M "$ROOTDISK" || exit_error "could not complete full-disk encryption step"
+    elif [ -z "$ENCRYPTROOT_ASAHI_SKIP_REENCRYPTION" ]; then
+        [ -z "$VERBOSE" ] || echo "Encrypting root disk..."
+        cryptsetup reencrypt --encrypt --reduce-device-size 32M "$ROOTDISK" || exit_error "could not complete full-disk encryption step"
+    fi
+    LUKS_UUID="$(cryptsetup luksUUID "$ROOTDISK" 2>/dev/null)"
+    [ -n "$LUKS_UUID" ] || exit_error "empty LUKS UUID;  could not complete full-disk encryption step"
+    export LUKS_UUID
+    LUKS_MAPPED_DEVICE="$(echo "$LUKS_MAPPED_DEVICE" | tr -d '[:space:]')"
+    LUKS_MAPPED_DEVICE="${LUKS_MAPPED_DEVICE:-"fedora-root"}"
+    LUKS_LOCAL_MAPPED_DEVICE="fedora-root-$(uuidgen | head -c 8)"
+    export LUKS_MAPPED_DEVICE LUKS_LOCAL_MAPPED_DEVICE
+}
+
+umount_vols() {
+    findmnt "$MOUNTDIR/boot" >/dev/null 2>&1 &&
+        { umount "$MOUNTDIR/boot" || error "could not unmount boot disk $BOOTDISK"; }
+    findmnt "$MOUNTDIR/home" >/dev/null 2>&1 &&
+        { umount "$MOUNTDIR/home" || error "could not unmount home subvolume of root disk $ROOTDISK"; }
+    findmnt "$MOUNTDIR" >/dev/null 2>&1 &&
+        { umount "$MOUNTDIR" || error "could not unmount root subvolume of root disk $ROOTDISK"; }
+    [ -b "/dev/mapper/$LUKS_LOCAL_MAPPED_DEVICE" ] &&
+        { cryptsetup close "$LUKS_LOCAL_MAPPED_DEVICE" || exit_error "could not close LUKS device $LUKS_LOCAL_MAPPED_DEVICE"; }
+    rm -df "$MOUNTDIR" || true
+    unset MOUNTDIR
+}
+
+mount_vols() {
+    echo
+    echo "You will now be asked to re-enter the root disk password."
+    echo
+    trap 'umount_vols; exit 1;' EXIT INT TERM QUIT HUP ABRT
+    MOUNTDIR="$(mktemp -d)"
+    cryptsetup open "$ROOTDISK" "$LUKS_LOCAL_MAPPED_DEVICE" || exit_error "could not decrypt LUKS device $ROOTDISK for carrying out the chroot steps"
+    mount -o subvol=root "/dev/mapper/$LUKS_LOCAL_MAPPED_DEVICE" "$MOUNTDIR" ||
+        exit_error "could not mount the root subvolume of the decrypted root disk /dev/mapper/$LUKS_LOCAL_MAPPED_DEVICE for carrying out the chroot steps"
+    mount -o subvol=home "/dev/mapper/$LUKS_LOCAL_MAPPED_DEVICE" "$MOUNTDIR/home" ||
+        exit_error "could not mount the home subvolume of the decrypted root disk /dev/mapper/$LUKS_LOCAL_MAPPED_DEVICE for carrying out the chroot steps"
+    mount "$BOOTDISK" "$MOUNTDIR/boot" || exit_error "could not mount boot disk $BOOTDISK for carrying out the chroot steps"
+}
+
+delete_self_clone() {
+    echo
+    [ -z "$VERBOSE" ] || echo "Deleting myself from the root disk..."
+    rm -f "$MOUNTDIR/$THIS_SCRIPT_NAME"
+}
+
+clone_self() {
+    echo
+    [ -z "$VERBOSE" ] || echo "Cloning myself into the root disk..."
+    trap 'delete_self_clone; umount_vols; exit 1;' EXIT INT TERM QUIT HUP ABRT
+    THIS_SCRIPT="$(realpath "$0")"
+    cp "$THIS_SCRIPT" "$MOUNTDIR/$THIS_SCRIPT_NAME" || exit_error "could not copy $THIS_SCRIPT_NAME into the root disk"
+    chmod +x "$MOUNTDIR/$THIS_SCRIPT_NAME" || exit_error "could not make $THIS_SCRIPT_NAME executable inside the root disk"
+}
+
+run_chroot() {
+    [ -z "$VERBOSE" ] || echo "Chrooting into the root disk..."
+    # shellcheck disable=2086
+    arch-chroot "$MOUNTDIR" "/$THIS_SCRIPT_NAME" --mco-43f12e50 $VERBOSE
+    trap - EXIT INT TERM QUIT HUP ABRT
+}
+
+chroot_update_crypttab() {
+    [ -z "$VERBOSE" ] || echo
+    [ -z "$VERBOSE" ] || echo "Writing /etc/crypttab..."
+    touch /etc/crypttab
+    chmod 0600 /etc/crypttab
+    grep -E "UUID=$LUKS_UUID" >/dev/null 2>&1 ||
+        echo "$LUKS_MAPPED_DEVICE UUID=$LUKS_UUID none" >>/etc/crypttab
+}
+
+chroot_update_grub() {
+    [ -z "$VERBOSE" ] || echo "Updating grub..."
+    grep -E "GRUB_CMDLINE_LINUX_DEFAULT=.*rd.luks.uuid=$LUKS_UUID" /etc/default/grub >/dev/null 2>&1 ||
+        sed -i -E "s|GRUB_CMDLINE_LINUX_DEFAULT=\"(.*)\"|GRUB_CMDLINE_LINUX_DEFAULT=\"\1 rd.luks.uuid=$LUKS_UUID\"|" /etc/default/grub
+    grub2-mkconfig -o "$(readlink -f /etc/grub2.cfg)"
+}
+
+chroot_update_initramfs() {
+    echo
+    [ -z "$VERBOSE" ] || echo "Updating initramfs..."
+    # shellcheck disable=2086
+    dracut --regenerate-all --force $VERBOSE
+}
+
+if [ -z "$ENCRYPTROOT_ASAHI_CHROOT_43F12E50" ]; then
+    check_root
+    check_arguments
+    check_dependencies
+    explain_and_warn
+    check_disks
+
+    # At this point all the dependencies we need are installed and on path,
+    # we're root, the disk structure is what we expect (as far as the root
+    # and boot disks are concerned), and the user has been instructed on the
+    # risks and consulted on the disks.
+
+    fs_shrink
+    encrypt_root
+    mount_vols
+    clone_self
+    run_chroot
+    delete_self_clone
+    umount_vols
+    [ -z "$VERBOSE" ] || echo
+    echo "Done!"
+else
+    [ -n "$LUKS_UUID" ] || exit_error "empty LUKS_UUID"
+    [ -n "$LUKS_MAPPED_DEVICE" ] || exit_error "empty LUKS_MAPPED_DEVICE"
+    chroot_update_crypttab || exit_error "could not create or modify /etc/crypttab inside chroot"
+    chroot_update_grub || exit_error "could not update grub inside chroot"
+    chroot_update_initramfs || exit_error "could not regenerate initramfs inside chroot"
+fi
