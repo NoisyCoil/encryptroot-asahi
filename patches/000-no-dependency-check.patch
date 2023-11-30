@@ -1,0 +1,25 @@
+Index: encryptroot-asahi/src/encryptroot.asahi
+===================================================================
+--- encryptroot-asahi.orig/src/encryptroot.asahi
++++ encryptroot-asahi/src/encryptroot.asahi
+@@ -77,12 +77,6 @@ check_arguments() {
+     [ -n "$BOOTDISK" ] || exit_error "missing mandatory argument BOOTDISK"
+ }
+ 
+-check_dependencies() {
+-    for c in arch-chroot btrfs cryptsetup lsblk uuidgen; do
+-        command -v $c >/dev/null 2>&1 || exit_error "command '$c' not installed or not on path"
+-    done
+-}
+-
+ explain_and_warn() {
+     echo "*** WARNING ***"
+     echo
+@@ -330,7 +324,6 @@ chroot_update_initramfs() {
+ if [ -z "$ENCRYPTROOT_ASAHI_CHROOT_43F12E50" ]; then
+     check_root
+     check_arguments
+-    check_dependencies
+     explain_and_warn
+     check_disks
+ 
