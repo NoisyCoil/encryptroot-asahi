@@ -54,8 +54,18 @@ The name of the mapped (decrypted) root device to be used on Fedora
 Asahi, as in **/dev/mapper/device\_name**. Stored in **/etc/crypttab**.
 Default if not provided: **fedora-root**.
 
+**--ext4**  
+Expect the root partition to be formatted with the **ext4** filesystem.
+See also '**OPERATIONS - 0. Preliminary checks**'. Implies the
+**--no-subvols** option.
+
 **-h**, **--help**  
 Print a synopsis and exit.
+
+**--no-subvols**  
+Expect no subvolumes in the root partition filesystem. See also
+'**OPERATIONS - 0. Preliminary checks**'. Takes effect only for
+btrfs-formatted root filesystems.
 
 **--root-label** *root\_label*  
 The expected root partition label. See also '**OPERATIONS - 0.
@@ -68,28 +78,36 @@ Be more verbose.
 
 **0. Preliminary checks**  
 We check that the root partition is formatted with the **btrfs**
-filesystem and that the boot partition is formatted with the **ext4**
-filesystem. Moreover, we check that the labels of the root and boot
-partions are, respectively, **fedora** and **BOOT**, if not otherwise
-specified via the **--root-label** and **--boot-label** options.
-Finally, we check that the root and boot partitions contain the files
-and binaries required to complete the encryption process.
+filesystem (or with **ext4** if the **--ext4** option is enabled) and
+that the boot partition is formatted with the **ext4** filesystem. Then,
+if not otherwise specified via the **--root-label** and **--boot-label**
+options, we check that the labels of the root and boot partions are,
+respectively, **fedora** and **BOOT**. Unless the **--no-subvols**
+option (implied by **--ext4**) is enabled, we check that the btrfs root
+filesystem contains the **root** and **home** subvolumes. Finally, we
+check that the root and boot partitions contain the files and binaries
+required to complete the encryption process.
 
-These checks are performed in order to prevent encryptroot.asahi (or the
-user) from unintentionally overwriting non-Fedora Asahi partitions (e.g.
-the macOS partitions), and to make sure that the encryption process can
-be brought to completion. Vanilla Fedora Asahi installations will pass
-these checks (if they don't it's a bug, report it if you can!)
+These checks are performed in order to prevent **encryptroot.asahi** (or
+the user) from unintentionally overwriting non-Fedora Asahi partitions
+(e.g. the macOS partitions), and to make sure that the encryption
+process can be brought to completion. Vanilla Fedora Asahi installations
+pass the checks without the **--ext4** and **--no-subvols** options (if
+they don't it's a bug, please report it if you can!)
 
 **1. Filesystem resizing**  
 The filesystem contained in your root partition needs to be shrunk to
 make room for the (LUKS) headers generated during the encryption step.
-This is achieved using the **btrfs-filesystem**(8) command:
+This is achieved using the **btrfs-filesystem**(8) command,
 
 \# **btrfs filesystem resize -32M** *mountpoint*
 
-Whether this step was successful can be checked by mounting the root
-partition and running
+or the **resize2fs**(8) command,
+
+\# **resize2fs** *rootdisk* $((*oldsize* - 32M))
+
+In the former case (btrfs root filesystem), whether this step was
+successful can be checked by mounting the root partition and running
 
 \# **btrfs device usage** *mountpoint*
 
@@ -150,24 +168,26 @@ than unpacking the initramfs and looking for **cryptsetup**(8),
 # RECOVERY
 
 **1. Filesystem resizing**  
-**encryptroot.asahi** detects whether the root filesystem was already
-shrunk by 32 MiB. If this is the case, re-running the script with the
-same arguments won't resize it a second time. If you manually shrank the
-root filesystem by a different amount (and the full-disk encryption step
-wasn't initiated yet), re-running the script will shrink it again by 32
-MiB. And then again. And so on.
+For btrfs root filesystems, **encryptroot.asahi** detects whether the
+root filesystem was already shrunk by 32 MiB. If this is the case,
+re-running the script with the same arguments won't resize it a second
+time. If you manually shrank the btrfs root filesystem by a different
+amount (or if your root partition is formatted with the ext4
+filesystem), AND if the full-disk encryption step was never initiated,
+re-running the script will shrink the filesystem again by 32 MiB. And
+then again. And so on.
 
 **2. Full-disk encryption**  
 **encryptroot.asahi** detects whether the encryption step was started
 before. If it determines that a previous encryption step was interrupted
 while in progress, it tries to resume it and bring it to completion. It
-does so by running
+does so by running again
 
 \# **cryptsetup reencrypt --encrypt --reduce-device-size 32M**
 *rootdisk*
 
-again (see **cryptsetup-reencrypt**(8) for the relevant documentation).
-If everything goes right, no data corruption will result from this
+(see **cryptsetup-reencrypt**(8) for the relevant documentation). If
+everything goes right, no data corruption will result from this
 re-running.
 
 If **encryptroot.asahi** detects that *rootdisk* is fully encrypted, for
@@ -190,9 +210,9 @@ should not cause any issue.
 Resuming the encryption process from the **Full-disk encryption** stage
 or from later ones requires **encryptroot.asahi** to be executed with
 the **same arguments** as its first run. The checks in step 0 (see
-**Preliminary checks** in the **OPERATIONS** sections) are still
-performed, but on the decrypted device, which requires you to enter the
-root disk password one additional time.
+'**OPERATIONS - 0. Preliminary checks**') are still performed, but on
+the decrypted device, which requires you to enter the root disk password
+one additional time.
 
 # CREDITS
 
@@ -213,4 +233,4 @@ MIT &lt;https://mit-license.org&gt;.
 # SEE ALSO
 
 **btrfs-filesystem**(8), **cryptsetup-reencrypt**(8), **crypttab**(5),
-**dracut**(8), **grub2-mkconfig**(8).
+**dracut**(8), **grub2-mkconfig**(8), **resize2fs**(8).
