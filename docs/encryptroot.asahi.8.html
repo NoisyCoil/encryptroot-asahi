@@ -55,9 +55,22 @@ Asahi, as in <strong>/dev/mapper/device_name</strong>. Stored in
 <strong>/etc/crypttab</strong>. Default if not provided:
 <strong>fedora-root</strong>.</p>
 </dd>
+<dt><strong>--ext4</strong></dt>
+<dd>
+<p>Expect the root partition to be formatted with the
+<strong>ext4</strong> filesystem. See also '<strong>OPERATIONS - 0.
+Preliminary checks</strong>'. Implies the <strong>--no-subvols</strong>
+option.</p>
+</dd>
 <dt><strong>-h</strong>, <strong>--help</strong></dt>
 <dd>
 <p>Print a synopsis and exit.</p>
+</dd>
+<dt><strong>--no-subvols</strong></dt>
+<dd>
+<p>Expect no subvolumes in the root partition filesystem. See also
+'<strong>OPERATIONS - 0. Preliminary checks</strong>'. Takes effect only
+for btrfs-formatted root filesystems.</p>
 </dd>
 <dt><strong>--root-label</strong> <em>root_label</em></dt>
 <dd>
@@ -75,35 +88,43 @@ Preliminary checks</strong>'. Default if not provided:
 <dt><strong>0. Preliminary checks</strong></dt>
 <dd>
 <p>We check that the root partition is formatted with the
-<strong>btrfs</strong> filesystem and that the boot partition is
-formatted with the <strong>ext4</strong> filesystem. Moreover, we check
-that the labels of the root and boot partions are, respectively,
-<strong>fedora</strong> and <strong>BOOT</strong>, if not otherwise
-specified via the <strong>--root-label</strong> and
-<strong>--boot-label</strong> options. Finally, we check that the root
-and boot partitions contain the files and binaries required to complete
-the encryption process.</p>
+<strong>btrfs</strong> filesystem (or with <strong>ext4</strong> if the
+<strong>--ext4</strong> option is enabled) and that the boot partition
+is formatted with the <strong>ext4</strong> filesystem. Then, if not
+otherwise specified via the <strong>--root-label</strong> and
+<strong>--boot-label</strong> options, we check that the labels of the
+root and boot partions are, respectively, <strong>fedora</strong> and
+<strong>BOOT</strong>. Unless the <strong>--no-subvols</strong> option
+(implied by <strong>--ext4</strong>) is enabled, we check that the btrfs
+root filesystem contains the <strong>root</strong> and
+<strong>home</strong> subvolumes. Finally, we check that the root and
+boot partitions contain the files and binaries required to complete the
+encryption process.</p>
 </dd>
 </dl>
-<p>These checks are performed in order to prevent encryptroot.asahi (or
-the user) from unintentionally overwriting non-Fedora Asahi partitions
-(e.g. the macOS partitions), and to make sure that the encryption
-process can be brought to completion. Vanilla Fedora Asahi installations
-will pass these checks (if they don't it's a bug, report it if you
-can!)</p>
+<p>These checks are performed in order to prevent
+<strong>encryptroot.asahi</strong> (or the user) from unintentionally
+overwriting non-Fedora Asahi partitions (e.g. the macOS partitions), and
+to make sure that the encryption process can be brought to completion.
+Vanilla Fedora Asahi installations pass the checks without the
+<strong>--ext4</strong> and <strong>--no-subvols</strong> options (if
+they don't it's a bug, please report it if you can!)</p>
 <dl>
 <dt><strong>1. Filesystem resizing</strong></dt>
 <dd>
 <p>The filesystem contained in your root partition needs to be shrunk to
 make room for the (LUKS) headers generated during the encryption step.
 This is achieved using the <strong>btrfs-filesystem</strong>(8)
-command:</p>
+command,</p>
 </dd>
 </dl>
 <p># <strong>btrfs filesystem resize -32M</strong>
 <em>mountpoint</em></p>
-<p>Whether this step was successful can be checked by mounting the root
-partition and running</p>
+<p>or the <strong>resize2fs</strong>(8) command,</p>
+<p># <strong>resize2fs</strong> <em>rootdisk</em> $((<em>oldsize</em> -
+32M))</p>
+<p>In the former case (btrfs root filesystem), whether this step was
+successful can be checked by mounting the root partition and running</p>
 <p># <strong>btrfs device usage</strong> <em>mountpoint</em></p>
 <p>If the "<strong>Device slack</strong>" field reads 32MiB (or 16MiB
 after encryption), it was successful.</p>
@@ -169,24 +190,26 @@ than unpacking the initramfs and looking for
 <dl>
 <dt><strong>1. Filesystem resizing</strong></dt>
 <dd>
-<p><strong>encryptroot.asahi</strong> detects whether the root
-filesystem was already shrunk by 32 MiB. If this is the case, re-running
-the script with the same arguments won't resize it a second time. If you
-manually shrank the root filesystem by a different amount (and the
-full-disk encryption step wasn't initiated yet), re-running the script
-will shrink it again by 32 MiB. And then again. And so on.</p>
+<p>For btrfs root filesystems, <strong>encryptroot.asahi</strong>
+detects whether the root filesystem was already shrunk by 32 MiB. If
+this is the case, re-running the script with the same arguments won't
+resize it a second time. If you manually shrank the btrfs root
+filesystem by a different amount (or if your root partition is formatted
+with the ext4 filesystem), AND if the full-disk encryption step was
+never initiated, re-running the script will shrink the filesystem again
+by 32 MiB. And then again. And so on.</p>
 </dd>
 <dt><strong>2. Full-disk encryption</strong></dt>
 <dd>
 <p><strong>encryptroot.asahi</strong> detects whether the encryption
 step was started before. If it determines that a previous encryption
 step was interrupted while in progress, it tries to resume it and bring
-it to completion. It does so by running</p>
+it to completion. It does so by running again</p>
 </dd>
 </dl>
 <p># <strong>cryptsetup reencrypt --encrypt --reduce-device-size
 32M</strong> <em>rootdisk</em></p>
-<p>again (see <strong>cryptsetup-reencrypt</strong>(8) for the relevant
+<p>(see <strong>cryptsetup-reencrypt</strong>(8) for the relevant
 documentation). If everything goes right, no data corruption will result
 from this re-running.</p>
 <p>If <strong>encryptroot.asahi</strong> detects that <em>rootdisk</em>
@@ -214,9 +237,9 @@ should not cause any issue.</p>
 encryption</strong> stage or from later ones requires
 <strong>encryptroot.asahi</strong> to be executed with the <strong>same
 arguments</strong> as its first run. The checks in step 0 (see
-<strong>Preliminary checks</strong> in the <strong>OPERATIONS</strong>
-sections) are still performed, but on the decrypted device, which
-requires you to enter the root disk password one additional time.</p>
+'<strong>OPERATIONS - 0. Preliminary checks</strong>') are still
+performed, but on the decrypted device, which requires you to enter the
+root disk password one additional time.</p>
 </dd>
 </dl>
 <h1>CREDITS</h1>
@@ -233,4 +256,5 @@ MIT &lt;https://mit-license.org&gt;.</p>
 <h1>SEE ALSO</h1>
 <p><strong>btrfs-filesystem</strong>(8),
 <strong>cryptsetup-reencrypt</strong>(8), <strong>crypttab</strong>(5),
-<strong>dracut</strong>(8), <strong>grub2-mkconfig</strong>(8).</p>
+<strong>dracut</strong>(8), <strong>grub2-mkconfig</strong>(8),
+<strong>resize2fs</strong>(8).</p>

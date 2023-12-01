@@ -8,11 +8,11 @@ exit_error() {
 }
 
 cleanup() {
-    if [ -n "$TMPDIR" ]; then
-        findmnt "$TMPDIR/boot" >/dev/null 2>&1 && sudo umount "$TMPDIR/boot"
-        findmnt "$TMPDIR/home" >/dev/null 2>&1 && sudo umount "$TMPDIR/home"
-        findmnt "$TMPDIR" >/dev/null 2>&1 && sudo umount "$TMPDIR"
-        rm -df "$TMPDIR"
+    if [ -n "$MNTDIR" ]; then
+        findmnt "$MNTDIR/boot" >/dev/null 2>&1 && sudo umount "$MNTDIR/boot"
+        findmnt "$MNTDIR/home" >/dev/null 2>&1 && sudo umount "$MNTDIR/home"
+        findmnt "$MNTDIR" >/dev/null 2>&1 && sudo umount "$MNTDIR"
+        rm -df "$MNTDIR"
     fi
     [ -b "/dev/mapper/$IMAGE_NUUID" ] && sudo cryptsetup close "$IMAGE_NUUID"
     { losetup 2>/dev/null | grep "$ROOTLOOP" >/dev/null 2>&1; } && sudo losetup -d "$ROOTLOOP"
@@ -49,15 +49,15 @@ sudo cryptsetup open "$ROOTLOOP" "$IMAGE_NUUID" <<EOF
 $PASSWORD
 EOF
 
-TMPDIR="$(mktemp -d)"
-sudo mount -o subvol=root "/dev/mapper/$IMAGE_NUUID" "$TMPDIR"
-sudo mount -o subvol=home "/dev/mapper/$IMAGE_NUUID" "$TMPDIR/home"
-sudo mount "$BOOTLOOP" "$TMPDIR/boot"
+MNTDIR="$(mktemp -d)"
+sudo mount -o subvol=root "/dev/mapper/$IMAGE_NUUID" "$MNTDIR"
+sudo mount -o subvol=home "/dev/mapper/$IMAGE_NUUID" "$MNTDIR/home"
+sudo mount "$BOOTLOOP" "$MNTDIR/boot"
 
 for file in "/etc/crypttab" "/etc/default/grub" "/boot/grub2/grub.cfg"; do
-    sudo grep "$LUKS_UUID" "$TMPDIR$file" >/dev/null 2>&1 || exit_error "luksUUID not in $file"
+    sudo grep "$LUKS_UUID" "$MNTDIR$file" >/dev/null 2>&1 || exit_error "luksUUID not in $file"
 done
-sudo grep -R "$LUKS_UUID" "$TMPDIR/boot/loader/entries" >/dev/null 2>&1 || exit_error "luksUUID not in /boot/loader/entries/"
+sudo grep -R "$LUKS_UUID" "$MNTDIR/boot/loader/entries" >/dev/null 2>&1 || exit_error "luksUUID not in /boot/loader/entries/"
 
 trap - EXIT
 
