@@ -5,7 +5,7 @@ set -e
 THIS_SCRIPT_NAME="encryptroot.asahi"
 
 print_usage() {
-    echo "Usage: $THIS_SCRIPT_NAME [ --boot-label BOOT_LABEL ] [ -d | --device-name DEVICE_NAME ] [ -h | --help ] [ --root-label ROOT_LABEL ]  [ -v | --verbose ] ROOTDISK BOOTDISK"
+    echo "Usage: $THIS_SCRIPT_NAME [ --boot-label BOOT_LABEL ] [ -d | --device-name DEVICE_NAME ] [ --ext4 ] [ -h | --help ] [ --no-subvols ] [ --root-label ROOT_LABEL ]  [ -v | --verbose ] ROOTDISK BOOTDISK"
 }
 
 error() {
@@ -37,6 +37,10 @@ while [ $# -gt 0 ]; do
         shift
         shift
         ;;
+    --ext4)
+        EXT4_FS="1"
+        shift
+        ;;
     -h | --help)
         print_usage
         exit
@@ -49,6 +53,10 @@ while [ $# -gt 0 ]; do
     --root-label)
         ROOTLABEL_EXP="$2"
         shift
+        shift
+        ;;
+    --no-subvols)
+        NO_SUBVOLS="1"
         shift
         ;;
     -v | --verbose)
@@ -77,6 +85,7 @@ while [ $# -gt 0 ]; do
         ;;
     esac
 done
+[ -z "$EXT4_FS" ] || NO_SUBVOLS="1"
 
 check_root() {
     [ "$(id -u)" = "0" ] || exit_error "this script must be run as root"
@@ -88,7 +97,13 @@ check_arguments() {
 }
 
 check_dependencies() {
-    for c in arch-chroot btrfs cryptsetup lsblk uuidgen; do
+    if [ -z "$EXT4_FS" ]; then
+        RESIZE_PROGS="btrfs"
+    else
+        RESIZE_PROGS="e2fsck resize2fs"
+    fi
+    # shellcheck disable=2086
+    for c in arch-chroot cryptsetup lsblk $RESIZE_PROGS uuidgen; do
         command -v $c >/dev/null 2>&1 || exit_error "command '$c' not installed or not on path"
     done
 }
@@ -132,18 +147,25 @@ rootdisk_check() {
     [ -z "$VERBOSE" ] || echo "Checking root disk content..."
     TMPDIR="$(mktemp -d)"
     mount "$ROOTDISK" "$TMPDIR" || exit_error "could not mount root disk $ROOTDISK for preliminary checks"
-    ROOTSUBVOLS="$(btrfs subvolume list "$TMPDIR" 2>/dev/null | rev | cut -d" " -f1 | rev | sort | tr \[:space:\] " ")"
-    [ -f "$TMPDIR/root/etc/default/grub" ] && GRUB2_DEFAULT_FILE_FOUND=1
-    [ -L "$TMPDIR/root/etc/grub2.cfg" ] && GRUB2_ETC_LINK_FOUND=1
-    [ -f "$TMPDIR/root/usr/sbin/grub2-mkconfig" ] && GRUB2_MKCONFIG_FOUND=1
-    [ -f "$TMPDIR/root/usr/bin/dracut" ] && DRACUT_FOUND=1
+    if [ -z "$NO_SUBVOLS" ]; then
+        ROOTSUBVOLS="$(btrfs subvolume list "$TMPDIR" 2>/dev/null | rev | cut -d" " -f1 | rev | sort | tr \[:space:\] " ")"
+        ROOTDIR="$TMPDIR/root"
+    else
+        ROOTDIR="$TMPDIR"
+    fi
+    [ -f "$ROOTDIR/etc/default/grub" ] && GRUB2_DEFAULT_FILE_FOUND=1
+    [ -L "$ROOTDIR/etc/grub2.cfg" ] && GRUB2_ETC_LINK_FOUND=1
+    [ -f "$ROOTDIR/usr/sbin/grub2-mkconfig" ] && GRUB2_MKCONFIG_FOUND=1
+    [ -f "$ROOTDIR/usr/bin/dracut" ] && DRACUT_FOUND=1
     umount "$TMPDIR" || exit_error "could not unmount root disk $ROOTDISK after preliminary checks"
     rm -df "$TMPDIR" || true
-    unset TMPDIR
-    case "$ROOTSUBVOLS" in
-    *home*root*) ;;
-    *) exit_error "could not find root and home subvolumes in root disk btrfs filesystem" ;;
-    esac
+    unset ROOTDIR TMPDIR
+    if [ -z "$NO_SUBVOLS" ]; then
+        case "$ROOTSUBVOLS" in
+        *home*root*) ;;
+        *) exit_error "could not find root and home subvolumes in root disk btrfs filesystem" ;;
+        esac
+    fi
     [ "$GRUB2_DEFAULT_FILE_FOUND" = "1" ] || exit_error "could not find /etc/default/grub in root disk filesystem"
     [ "$GRUB2_ETC_LINK_FOUND" = "1" ] || exit_error "could not find /etc/grub2.cfg in root disk filesystem"
     [ "$GRUB2_MKCONFIG_FOUND" = "1" ] || exit_error "could not find /usr/sbin/grub2-mkconfig in root disk filesystem"
@@ -176,6 +198,8 @@ rootdisk_luks_check() {
     ROOTDISK="/dev/mapper/$MAPPED_ROOTDISK"
     trap 'rootdisk_luks_check_cleanup; exit 1;' EXIT INT TERM QUIT HUP ABRT
     cryptsetup open "$OLD_ROOTDISK" "$MAPPED_ROOTDISK" || exit_error "could not decrypt LUKS device $OLD_ROOTDISK for preliminary checks"
+    ROOTFS2="$(lsblk -ndo FSTYPE "$ROOTDISK" 2>/dev/null)"
+    [ "$ROOTFS2" = "$ROOTFS_EXP" ] || exit_error "expected $ROOTFS_EXP root disk filesystem, found '$ROOTFS2'"
     rootdisk_check
     trap - EXIT INT TERM QUIT HUP ABRT
     rootdisk_luks_check_cleanup
@@ -202,15 +226,20 @@ check_disks() {
     lsblk -nd "$ROOTDISK" >/dev/null 2>&1 || exit_error "root disk $ROOTDISK not found"
     [ -z "$VERBOSE" ] || echo "Checking root disk filesystem layout..."
     ROOTFS="$(lsblk -ndo FSTYPE "$ROOTDISK" 2>/dev/null)"
+    if [ -z "$EXT4_FS" ]; then
+        ROOTFS_EXP="btrfs"
+    else
+        ROOTFS_EXP="ext4"
+    fi
     case "$ROOTFS" in
-    btrfs)
+    "$ROOTFS_EXP")
         rootdisk_check
         ;;
     crypto_LUKS)
         rootdisk_luks_check
         ;;
     *)
-        exit_error "expected btrfs root disk filesystem, found '$ROOTFS'"
+        exit_error "expected $ROOTFS_EXP root disk filesystem, found '$ROOTFS'"
         ;;
     esac
     # Boot disk checks
@@ -239,18 +268,27 @@ fs_shrink_cleanup() {
 fs_shrink() {
     { [ -n "$ENCRYPTROOT_ASAHI_RESUME_REENCRYPTION" ] ||
         [ -n "$ENCRYPTROOT_ASAHI_SKIP_REENCRYPTION" ]; } && return
-    TMPDIR="$(mktemp -d)"
-    mount "$ROOTDISK" "$TMPDIR" || exit_error "could not mount root disk $ROOTDISK for filesystem resizing"
-    if btrfs device usage "$TMPDIR" 2>/dev/null | grep -E "Device slack:\s+32.00MiB" >/dev/null 2>&1; then
-        [ -z "$VERBOSE" ] || echo "Skipping root disk filesystem shrinking (already done)."
+    if [ -z "$EXT4_FS" ]; then
+        TMPDIR="$(mktemp -d)"
+        mount "$ROOTDISK" "$TMPDIR" || exit_error "could not mount root disk $ROOTDISK for filesystem resizing"
+        if btrfs device usage "$TMPDIR" 2>/dev/null | grep -E "Device slack:\s+32.00MiB" >/dev/null 2>&1; then
+            [ -z "$VERBOSE" ] || echo "Skipping root disk filesystem shrinking (already done)."
+        else
+            [ -z "$VERBOSE" ] || echo "Shrinking root disk filesystem..."
+            trap 'fs_shrink_cleanup; exit 1;' EXIT INT TERM QUIT HUP ABRT
+            btrfs filesystem resize -32M "$TMPDIR" || exit_error "could not shrink the root disk btrfs filesystem to make room for the LUKS headers"
+            trap - EXIT INT TERM QUIT HUP ABRT
+        fi
+        fs_shrink_cleanup
+        unset TMPDIR
     else
-        [ -z "$VERBOSE" ] || echo "Shrinking root disk filesystem..."
-        trap 'fs_shrink_cleanup; exit 1;' EXIT INT TERM QUIT HUP ABRT
-        btrfs filesystem resize -32M "$TMPDIR" || exit_error "could not shrink the root disk btrfs filesystem to make room for the LUKS headers"
-        trap - EXIT INT TERM QUIT HUP ABRT
+        # TODO: DO NOT RESIZE TWICE
+        e2fsck -f -y "$ROOTDISK" || exit_error "could not run e2fsck before shrinking the root disk ext4 filesystem"
+        ROOTSIZE="$(lsblk -no SIZE --bytes "$ROOTDISK")"
+        ROOTSIZE="$((ROOTSIZE / 1024 / 1024))"
+        NEW_ROOTSIZE="$((ROOTSIZE - 32))"
+        resize2fs "$ROOTDISK" "${NEW_ROOTSIZE}M" || exit_error "could not shrink the root disk ext4 filesystem to make room for the LUKS headers"
     fi
-    fs_shrink_cleanup
-    unset TMPDIR
 }
 
 encrypt_root() {
@@ -275,10 +313,13 @@ encrypt_root() {
 umount_vols() {
     findmnt "$MOUNTDIR/boot" >/dev/null 2>&1 &&
         { umount "$MOUNTDIR/boot" || error "could not unmount boot disk $BOOTDISK"; }
-    findmnt "$MOUNTDIR/home" >/dev/null 2>&1 &&
-        { umount "$MOUNTDIR/home" || error "could not unmount home subvolume of root disk $ROOTDISK"; }
+    if [ -z "$NO_SUBVOLS" ]; then
+        findmnt "$MOUNTDIR/home" >/dev/null 2>&1 &&
+            { umount "$MOUNTDIR/home" || error "could not unmount home subvolume of root disk $ROOTDISK"; }
+        PMSG="root subvolume of "
+    fi
     findmnt "$MOUNTDIR" >/dev/null 2>&1 &&
-        { umount "$MOUNTDIR" || error "could not unmount root subvolume of root disk $ROOTDISK"; }
+        { umount "$MOUNTDIR" || error "could not unmount ${PMSG}root disk $ROOTDISK"; }
     [ -b "/dev/mapper/$LUKS_LOCAL_MAPPED_DEVICE" ] &&
         { cryptsetup close "$LUKS_LOCAL_MAPPED_DEVICE" || exit_error "could not close LUKS device $LUKS_LOCAL_MAPPED_DEVICE"; }
     rm -df "$MOUNTDIR" || true
@@ -292,10 +333,17 @@ mount_vols() {
     trap 'umount_vols; exit 1;' EXIT INT TERM QUIT HUP ABRT
     MOUNTDIR="$(mktemp -d)"
     cryptsetup open "$ROOTDISK" "$LUKS_LOCAL_MAPPED_DEVICE" || exit_error "could not decrypt LUKS device $ROOTDISK for carrying out the chroot steps"
-    mount -o subvol=root "/dev/mapper/$LUKS_LOCAL_MAPPED_DEVICE" "$MOUNTDIR" ||
-        exit_error "could not mount the root subvolume of the decrypted root disk /dev/mapper/$LUKS_LOCAL_MAPPED_DEVICE for carrying out the chroot steps"
-    mount -o subvol=home "/dev/mapper/$LUKS_LOCAL_MAPPED_DEVICE" "$MOUNTDIR/home" ||
-        exit_error "could not mount the home subvolume of the decrypted root disk /dev/mapper/$LUKS_LOCAL_MAPPED_DEVICE for carrying out the chroot steps"
+    if [ -z "$NO_SUBVOLS" ]; then
+        PMSG="root subvolume of "
+        ROOTSUBVOLOPT="-o subvol=root"
+    fi
+    # shellcheck disable=2086
+    mount $ROOTSUBVOLOPT "/dev/mapper/$LUKS_LOCAL_MAPPED_DEVICE" "$MOUNTDIR" ||
+        exit_error "could not mount ${PMSG}decrypted root disk /dev/mapper/$LUKS_LOCAL_MAPPED_DEVICE for carrying out the chroot steps"
+    if [ -z "$NO_SUBVOLS" ]; then
+        mount -o subvol=home "/dev/mapper/$LUKS_LOCAL_MAPPED_DEVICE" "$MOUNTDIR/home" ||
+            exit_error "could not mount home subvolume of decrypted root disk /dev/mapper/$LUKS_LOCAL_MAPPED_DEVICE for carrying out the chroot steps"
+    fi
     mount "$BOOTDISK" "$MOUNTDIR/boot" || exit_error "could not mount boot disk $BOOTDISK for carrying out the chroot steps"
 }
 
