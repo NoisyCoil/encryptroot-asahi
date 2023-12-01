@@ -14,7 +14,7 @@ Patch0:         patches/000-no-dependency-check.patch
 BuildArch:      noarch
 ExclusiveArch:  aarch64 noarch
 
-Requires:       arch-install-scripts btrfs-progs cryptsetup util-linux
+Requires:       arch-install-scripts btrfs-progs cryptsetup e2fsprogs util-linux
 
 %description
 encryptroot.asahi is an interactive tool that allows you to encrypt the root
