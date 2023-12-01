@@ -291,15 +291,35 @@ fs_shrink() {
     fi
 }
 
+incomplete_encryption_warning() {
+    if [ "$(lsblk -ndo FSTYPE "$ROOTDISK" 2>/dev/null)" = "crypto_LUKS" ]; then
+        echo
+        echo "***** WARNING ********************************************************"
+        echo "*                                                                    *"
+        echo "*   Even if the root disk shows up as a LUKS device, the full-disk   *"
+        echo "*   encryption step was NOT completed. Your data is NOT secured at   *"
+        echo "*   this stage. Read the manpage for more information.               *"
+        echo "*                                                                    *"
+        echo "**********************************************************************"
+        echo
+    fi
+}
+
 encrypt_root() {
     if [ -n "$ENCRYPTROOT_ASAHI_RESUME_REENCRYPTION" ]; then
         [ -z "$VERBOSE" ] || echo "Resuming root disk encryption..."
         [ -z "$VERBOSE" ] || echo
         echo "Sorry about this, but we need your root disk password yet again (two more times actually)..."
-        cryptsetup reencrypt --encrypt --reduce-device-size 32M "$ROOTDISK" || exit_error "could not complete full-disk encryption step"
+        trap 'incomplete_encryption_warning; exit 1;' INT TERM QUIT HUP ABRT
+        cryptsetup reencrypt --encrypt --reduce-device-size 32M "$ROOTDISK" ||
+            { incomplete_encryption_warning && exit_error "could not complete full-disk encryption step"; }
+        trap - INT TERM QUIT HUP ABRT
     elif [ -z "$ENCRYPTROOT_ASAHI_SKIP_REENCRYPTION" ]; then
         [ -z "$VERBOSE" ] || echo "Encrypting root disk..."
-        cryptsetup reencrypt --encrypt --reduce-device-size 32M "$ROOTDISK" || exit_error "could not complete full-disk encryption step"
+        trap 'incomplete_encryption_warning; exit 1;' INT TERM QUIT HUP ABRT
+        cryptsetup reencrypt --encrypt --reduce-device-size 32M "$ROOTDISK" ||
+            { incomplete_encryption_warning && exit_error "could not complete full-disk encryption step"; }
+        trap - INT TERM QUIT HUP ABRT
     fi
     LUKS_UUID="$(cryptsetup luksUUID "$ROOTDISK" 2>/dev/null)"
     [ -n "$LUKS_UUID" ] || exit_error "empty LUKS UUID;  could not complete full-disk encryption step"
