@@ -332,8 +332,13 @@ chroot_update_crypttab() {
 
 chroot_update_grub() {
     [ -z "$VERBOSE" ] || echo "Updating grub..."
-    grep -E "GRUB_CMDLINE_LINUX_DEFAULT=.*rd.luks.uuid=$LUKS_UUID" /etc/default/grub >/dev/null 2>&1 ||
-        sed -i -E "s|GRUB_CMDLINE_LINUX_DEFAULT=\"(.*)\"|GRUB_CMDLINE_LINUX_DEFAULT=\"\1 rd.luks.uuid=$LUKS_UUID\"|" /etc/default/grub
+    if ! grep -E "GRUB_CMDLINE_LINUX_DEFAULT=.*rd.luks.uuid=$LUKS_UUID" /etc/default/grub >/dev/null 2>&1; then
+        if grep "GRUB_CMDLINE_LINUX_DEFAULT=" /etc/default/grub >/dev/null 2>&1; then
+            sed -i -E "s|GRUB_CMDLINE_LINUX_DEFAULT=\"(.*)\"|GRUB_CMDLINE_LINUX_DEFAULT=\"\1 rd.luks.uuid=$LUKS_UUID\"|" /etc/default/grub
+        else
+            echo "GRUB_CMDLINE_LINUX_DEFAULT=\"rd.luks.uuid=$LUKS_UUID\"" >>/etc/default/grub
+        fi
+    fi
     grub2-mkconfig -o "$(readlink -f /etc/grub2.cfg)"
 }
 
