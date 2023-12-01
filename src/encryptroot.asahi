@@ -261,8 +261,9 @@ check_disks() {
 }
 
 fs_shrink_cleanup() {
-    umount "$TMPDIR" || exit_error "could not unmount root disk $ROOTDISK after filesystem resizing"
-    rm -df "$TMPDIR"
+    findmnt "$TMPDIR" >/dev/null 2>&1 &&
+        { umount "$TMPDIR" || exit_error "could not unmount root disk $ROOTDISK after filesystem resizing"; }
+    rm -df "$TMPDIR" || true
 }
 
 fs_shrink() {
