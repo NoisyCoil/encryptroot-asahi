@@ -326,7 +326,7 @@ chroot_update_crypttab() {
     [ -z "$VERBOSE" ] || echo "Writing /etc/crypttab..."
     touch /etc/crypttab
     chmod 0600 /etc/crypttab
-    grep -E "UUID=$LUKS_UUID" >/dev/null 2>&1 ||
+    grep -E "UUID=$LUKS_UUID" /etc/crypttab >/dev/null 2>&1 ||
         echo "$LUKS_MAPPED_DEVICE UUID=$LUKS_UUID none" >>/etc/crypttab
 }
 
