@@ -19,7 +19,7 @@ cleanup() {
     { losetup 2>/dev/null | grep "$BOOTLOOP" >/dev/null 2>&1; } && sudo losetup -d "$BOOTLOOP"
 }
 
-echo "*** Testing encryption process ***"
+echo "*** Testing encryption process on raw image ***"
 echo
 
 LOOPDEVICES="$(tests/mount-image.sh)"
@@ -63,4 +63,4 @@ trap - EXIT
 
 cleanup
 echo
-echo "*** Encryption process test passed ***"
+echo "*** Encryption process test passed on raw image ***"
