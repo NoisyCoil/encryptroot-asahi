@@ -5,7 +5,7 @@ set -e
 THIS_SCRIPT_NAME="encryptroot.asahi"
 
 print_usage() {
-    echo "Usage: $THIS_SCRIPT_NAME [ -d | --device-name ] [ -h | --help ] [ -v | --verbose ] ROOTDISK BOOTDISK"
+    echo "Usage: $THIS_SCRIPT_NAME [ --boot-label BOOT_LABEL ] [ -d | --device-name DEVICE_NAME ] [ -h | --help ] [ --root-label ROOT_LABEL ]  [ -v | --verbose ] ROOTDISK BOOTDISK"
 }
 
 error() {
@@ -27,6 +27,11 @@ exit_error_with_usage() {
 PARGS=0
 while [ $# -gt 0 ]; do
     case "$1" in
+    --boot-label)
+        BOOTLABEL_EXP="$2"
+        shift
+        shift
+        ;;
     -d | --device-name)
         LUKS_MAPPED_DEVICE="$2"
         shift
@@ -39,6 +44,11 @@ while [ $# -gt 0 ]; do
     # Magic chroot option. For internal use only, do not use manually.
     --mco-43f12e50)
         ENCRYPTROOT_ASAHI_CHROOT_43F12E50=1
+        shift
+        ;;
+    --root-label)
+        ROOTLABEL_EXP="$2"
+        shift
         shift
         ;;
     -v | --verbose)
@@ -113,7 +123,8 @@ explain_and_warn() {
 
 rootdisk_check() {
     ROOTLABEL="$(lsblk -ndo LABEL "$ROOTDISK" 2>/dev/null)"
-    [ "$ROOTLABEL" = "fedora" ] || exit_error "expected root disk label 'fedora', found '$ROOTLABEL'"
+    ROOTLABEL_EXP="${ROOTLABEL_EXP:-"fedora"}"
+    [ "$ROOTLABEL" = "$ROOTLABEL_EXP" ] || exit_error "expected root disk label '$ROOTLABEL_EXP', found '$ROOTLABEL'"
     for MNTPOINT in $(findmnt -no TARGET "$ROOTDISK" 2>/dev/null); do
         [ "$MNTPOINT" = "/" ] && exit_error "cannot encrypt root disk currently mounted on /"
     done
@@ -172,7 +183,10 @@ rootdisk_luks_check() {
     unset OLD_ROOTDISK
 }
 
-bootdisk_content_check() {
+bootdisk_check() {
+    BOOTLABEL="$(lsblk -ndo LABEL "$BOOTDISK" 2>/dev/null)"
+    BOOTLABEL_EXP="${BOOTLABEL_EXP:-"BOOT"}"
+    [ "$BOOTLABEL" = "$BOOTLABEL_EXP" ] || exit_error "expected boot disk label '$BOOTLABEL_EXP', found '$BOOTLABEL'"
     [ -z "$VERBOSE" ] || echo "Checking boot disk content..."
     TMPDIR="$(mktemp -d)"
     mount "$BOOTDISK" "$TMPDIR" || exit_error "could not mount boot disk $BOOTDISK for preliminary checks"
@@ -203,10 +217,8 @@ check_disks() {
     lsblk -nd "$BOOTDISK" >/dev/null 2>&1 || exit_error "boot disk $BOOTDISK not found"
     [ -z "$VERBOSE" ] || echo "Checking boot disk filesystem layout..."
     BOOTFS="$(lsblk -ndo FSTYPE "$BOOTDISK" 2>/dev/null)"
-    BOOTLABEL="$(lsblk -ndo LABEL "$BOOTDISK" 2>/dev/null)"
     [ "$BOOTFS" = "ext4" ] || exit_error "expected ext4 boot disk filesystem, found '$BOOTFS'"
-    [ "$BOOTLABEL" = "BOOT" ] || exit_error "expected boot disk label 'BOOT', found '$BOOTLABEL'"
-    bootdisk_content_check
+    bootdisk_check
     # User confirmation
     [ -z "$VERBOSE" ] || echo
     echo "We are going to encrypt $ROOTDISK and use $BOOTDISK as the boot disk."

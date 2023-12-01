@@ -2,9 +2,10 @@
 <p>encryptroot.asahi - encrypt the root partition of your Fedora Asahi
 installation</p>
 <h1>SYNOPSIS</h1>
-<p><strong>encryptroot.asahi</strong> [ <strong>-d</strong>
-<em>device_name</em> ] [ <strong>-v</strong> ] <em>rootdisk</em>
-<em>bootdisk</em></p>
+<p><strong>encryptroot.asahi</strong> [ <strong>--boot-label</strong>
+<em>boot_label</em> ] [ <strong>-d</strong> <em>device_name</em> ] [
+<strong>--root-label</strong> <em>root_label</em> ] [
+<strong>-v</strong> ] <em>rootdisk</em> <em>bootdisk</em></p>
 <p><strong>encryptroot.asahi</strong> [ <strong>-h</strong> ]</p>
 <h1>DESCRIPTION</h1>
 <p><strong>encryptroot.asahi</strong> is an interactive script that
@@ -40,6 +41,12 @@ root partition.</p>
 </dl>
 <h1>OPTIONS</h1>
 <dl>
+<dt><strong>--boot-label</strong> <em>boot_label</em></dt>
+<dd>
+<p>The expected boot partition label. See also '<strong>OPERATIONS - 0.
+Preliminary checks</strong>'. Default if not provided:
+<strong>BOOT</strong>.</p>
+</dd>
 <dt><strong>-d</strong> <em>device_name</em>,
 <strong>--device-name</strong> <em>device_name</em></dt>
 <dd>
@@ -51,6 +58,12 @@ Asahi, as in <strong>/dev/mapper/device_name</strong>. Stored in
 <dt><strong>-h</strong>, <strong>--help</strong></dt>
 <dd>
 <p>Print a synopsis and exit.</p>
+</dd>
+<dt><strong>--root-label</strong> <em>root_label</em></dt>
+<dd>
+<p>The expected root partition label. See also '<strong>OPERATIONS - 0.
+Preliminary checks</strong>'. Default if not provided:
+<strong>fedora</strong>.</p>
 </dd>
 <dt><strong>-v</strong>, <strong>--verbose</strong></dt>
 <dd>
@@ -65,9 +78,11 @@ Asahi, as in <strong>/dev/mapper/device_name</strong>. Stored in
 <strong>btrfs</strong> filesystem and that the boot partition is
 formatted with the <strong>ext4</strong> filesystem. Moreover, we check
 that the labels of the root and boot partions are, respectively,
-'<strong>fedora</strong>' and '<strong>BOOT</strong>'. Finally, we check
-that the root and boot partitions contain the files and binaries
-required to complete the encryption process.</p>
+<strong>fedora</strong> and <strong>BOOT</strong>, if not otherwise
+specified via the <strong>--root-label</strong> and
+<strong>--boot-label</strong> options. Finally, we check that the root
+and boot partitions contain the files and binaries required to complete
+the encryption process.</p>
 </dd>
 </dl>
 <p>These checks are performed in order to prevent encryptroot.asahi (or
