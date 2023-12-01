@@ -92,22 +92,23 @@ These checks are performed in order to prevent **encryptroot.asahi** (or
 the user) from unintentionally overwriting non-Fedora Asahi partitions
 (e.g. the macOS partitions), and to make sure that the encryption
 process can be brought to completion. Vanilla Fedora Asahi installations
-pass the checks without the **--ext4** and **--no-subvols** options (if
-they don't it's a bug, please report it if you can!)
+require no options to pass the checks (if they do it's a bug, please
+report it if you can!)
 
 **1. Filesystem resizing**  
 The filesystem contained in your root partition needs to be shrunk to
 make room for the (LUKS) headers generated during the encryption step.
-This is achieved using the **btrfs-filesystem**(8) command,
+This is achieved using the **btrfs-filesystem**(8) command (for btrfs
+root filesystems),
 
 \# **btrfs filesystem resize -32M** *mountpoint*
 
-or the **resize2fs**(8) command,
+or the **resize2fs**(8) command (for ext4 root filesystems),
 
 \# **resize2fs** *rootdisk* $((*oldsize* - 32M))
 
-In the former case (btrfs root filesystem), whether this step was
-successful can be checked by mounting the root partition and running
+In the former case, whether this step was successful can be checked by
+mounting the root partition and running
 
 \# **btrfs device usage** *mountpoint*
 
@@ -124,8 +125,8 @@ unless things go wrong) using **cryptsetup-reencrypt**(8):
 From the moment this step starts, the system will detect the root
 partition as a **crypto\_LUKS** device (e.g. run **lsblk -ndo FSTYPE**
 *rootdisk*); the root partition can then be mounted using
-**cryptsetup-open**(8). Nonetheless, the root partition is only actually
-fully encrypted when this step is completed.
+**cryptsetup-open**(8). Nonetheless, the root partition is **only**
+actually fully encrypted when this step is **completed**.
 
 The encryption step can be interrupted and resumed at a later moment.
 While this behavior is useful in the event of recovery from failure, we
@@ -140,7 +141,8 @@ If the '**Requirements**' field in '**LUKS header information**' exists
 and contains the string 'online-reencrypt', the encryption process was
 interrupted and must be resumed. Otherwise it completed successfully.
 Note that if the previous command complains about *rootdisk* being an
-invalid LUKS device, it means that this step never started.
+invalid LUKS device, it means that this step never started in the first
+place.
 
 **3. /etc/crypttab and grub (chroot)**  
 The now-encrypted root partition is registered for boot-time decryption
@@ -173,9 +175,9 @@ root filesystem was already shrunk by 32 MiB. If this is the case,
 re-running the script with the same arguments won't resize it a second
 time. If you manually shrank the btrfs root filesystem by a different
 amount (or if your root partition is formatted with the ext4
-filesystem), AND if the full-disk encryption step was never initiated,
-re-running the script will shrink the filesystem again by 32 MiB. And
-then again. And so on.
+filesystem), **AND** if the full-disk encryption step was never
+initiated, re-running the script will shrink the filesystem again by 32
+MiB. And then again. And so on.
 
 **2. Full-disk encryption**  
 **encryptroot.asahi** detects whether the encryption step was started

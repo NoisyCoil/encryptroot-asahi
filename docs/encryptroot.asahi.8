@@ -89,24 +89,24 @@ contain the files and binaries required to complete the encryption process.
 These checks are performed in order to prevent \fBencryptroot.asahi\fP (or the
 user) from unintentionally overwriting non-Fedora Asahi partitions (e.g. the
 macOS partitions), and to make sure that the encryption process can be brought
-to completion. Vanilla Fedora Asahi installations pass the checks without the
-\fB--ext4\fP and \fB--no-subvols\fP options (if they don't it's a bug, please
-report it if you can!)
+to completion. Vanilla Fedora Asahi installations require no options to pass
+the checks (if they do it's a bug, please report it if you can!)
 
 .TP
 \fB1. Filesystem resizing\fP
 The filesystem contained in your root partition needs to be shrunk to make
 room for the (LUKS) headers generated during the encryption step. This is
-achieved using the \fBbtrfs-filesystem\fP(8) command,
+achieved using the \fBbtrfs-filesystem\fP(8) command (for btrfs root
+filesystems),
 
 # \fBbtrfs filesystem resize -32M\fP \fImountpoint\fP
 
-or the \fBresize2fs\fP(8) command,
+or the \fBresize2fs\fP(8) command (for ext4 root filesystems),
 
 # \fBresize2fs\fP \fIrootdisk\fP $((\fIoldsize\fP - 32M))
 
-In the former case (btrfs root filesystem), whether this step was successful
-can be checked by mounting the root partition and running
+In the former case, whether this step was successful can be checked by mounting
+the root partition and running
 
 # \fBbtrfs device usage\fP \fImountpoint\fP
 
@@ -123,8 +123,8 @@ things go wrong) using \fBcryptsetup-reencrypt\fP(8):
 From the moment this step starts, the system will detect the root partition as
 a \fBcrypto_LUKS\fP device (e.g. run \fBlsblk -ndo FSTYPE\fP \fIrootdisk\fP);
 the root partition can then be mounted using \fBcryptsetup-open\fP(8). \
-Nonetheless, the root partition is only actually fully encrypted when this step
-is completed.
+Nonetheless, the root partition is \fBonly\fP actually fully encrypted when
+this step is \fBcompleted\fP.
 
 The encryption step can be interrupted and resumed at a later moment. While
 this behavior is useful in the event of recovery from failure, we advise the
@@ -138,7 +138,7 @@ If the '\fBRequirements\fP' field in '\fBLUKS header information\fP' exists
 and contains the string 'online-reencrypt', the encryption process was
 interrupted and must be resumed. Otherwise it completed successfully. Note
 that if the previous command complains about \fIrootdisk\fP being an invalid
-LUKS device, it means that this step never started.
+LUKS device, it means that this step never started in the first place.
 
 .TP
 \fB3. /etc/crypttab and grub (chroot)\fP
@@ -172,7 +172,7 @@ For btrfs root filesystems, \fBencryptroot.asahi\fP detects whether the root
 filesystem was already shrunk by 32 MiB. If this is the case, re-running the
 script with the same arguments won't resize it a second time. If you manually
 shrank the btrfs root filesystem by a different amount (or if your root
-partition is formatted with the ext4 filesystem), AND if the full-disk
+partition is formatted with the ext4 filesystem), \fBAND\fP if the full-disk
 encryption step was never initiated, re-running the script will shrink the
 filesystem again by 32 MiB. And then again. And so on.
 
