@@ -30,7 +30,7 @@ trap 'cleanup; exit;' EXIT INT TERM QUIT ABRT
 
 PASSWORD=complicatedpassword3945
 
-sudo src/encryptroot.asahi -v "$ROOTLOOP" "$BOOTLOOP" <<EOF
+sudo src/encryptroot.asahi -v "$@" "$ROOTLOOP" "$BOOTLOOP" <<EOF
 
 
 $PASSWORD
