@@ -4,7 +4,9 @@
 encryptroot.asahi - encrypt the root partition of your Fedora Asahi installation
 
 .SH SYNOPSIS
-\fBencryptroot.asahi\fP [ \fB-d\fP \fIdevice_name\fP ] [ \fB-v\fP ] \fIrootdisk\fP \fIbootdisk\fP
+\fBencryptroot.asahi\fP [ \fB--boot-label\fP \fIboot_label\fP ]
+[ \fB-d\fP \fIdevice_name\fP ] [ \fB--root-label\fP \fIroot_label\fP ]
+[ \fB-v\fP ] \fIrootdisk\fP \fIbootdisk\fP
 
 \fBencryptroot.asahi\fP [ \fB-h\fP ]
 
@@ -40,6 +42,10 @@ partition.
 
 .SH OPTIONS
 .TP
+\fB--boot-label\fP \fIboot_label\fP
+The expected boot partition label. See also '\fBOPERATIONS - 0. Preliminary checks\fP'.
+Default if not provided: \fBBOOT\fP.
+.TP
 \fB-d\fP \fIdevice_name\fP, \fB--device-name\fP \fIdevice_name\fP
 The name of the mapped (decrypted) root device to be used on Fedora Asahi, as
 in \fB/dev/mapper/device_name\fP. Stored in \fB/etc/crypttab\fP. Default if not
@@ -47,6 +53,10 @@ provided: \fBfedora-root\fP.
 .TP
 \fB-h\fP, \fB--help\fP
 Print a synopsis and exit.
+.TP
+\fB--root-label\fP \fIroot_label\fP
+The expected root partition label. See also '\fBOPERATIONS - 0. Preliminary checks\fP'.
+Default if not provided: \fBfedora\fP.
 .TP
 \fB-v\fP, \fB--verbose\fP
 Be more verbose.
@@ -57,9 +67,10 @@ Be more verbose.
 We check that the root partition is formatted with the \fBbtrfs\fP filesystem
 and that the boot partition is formatted with the \fBext4\fP filesystem. \
 Moreover, we check that the labels of the root and boot partions are,
-respectively, '\fBfedora\fP' and '\fBBOOT\fP'. Finally, we check that the root
-and boot partitions contain the files and binaries required to complete the
-encryption process.
+respectively, \fBfedora\fP and \fBBOOT\fP, if not otherwise specified via the
+\fB--root-label\fP and \fB--boot-label\fP options. Finally, we check that the
+root and boot partitions contain the files and binaries required to complete
+the encryption process.
 
 These checks are performed in order to prevent encryptroot.asahi (or the user)
 from unintentionally overwriting non-Fedora Asahi partitions (e.g. the macOS

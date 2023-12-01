@@ -5,7 +5,8 @@ installation
 
 # SYNOPSIS
 
-**encryptroot.asahi** \[ **-d** *device\_name* \] \[ **-v** \]
+**encryptroot.asahi** \[ **--boot-label** *boot\_label* \] \[ **-d**
+*device\_name* \] \[ **--root-label** *root\_label* \] \[ **-v** \]
 *rootdisk* *bootdisk*
 
 **encryptroot.asahi** \[ **-h** \]
@@ -44,6 +45,10 @@ root partition.
 
 # OPTIONS
 
+**--boot-label** *boot\_label*  
+The expected boot partition label. See also '**OPERATIONS - 0.
+Preliminary checks**'. Default if not provided: **BOOT**.
+
 **-d** *device\_name*, **--device-name** *device\_name*  
 The name of the mapped (decrypted) root device to be used on Fedora
 Asahi, as in **/dev/mapper/device\_name**. Stored in **/etc/crypttab**.
@@ -51,6 +56,10 @@ Default if not provided: **fedora-root**.
 
 **-h**, **--help**  
 Print a synopsis and exit.
+
+**--root-label** *root\_label*  
+The expected root partition label. See also '**OPERATIONS - 0.
+Preliminary checks**'. Default if not provided: **fedora**.
 
 **-v**, **--verbose**  
 Be more verbose.
@@ -61,9 +70,10 @@ Be more verbose.
 We check that the root partition is formatted with the **btrfs**
 filesystem and that the boot partition is formatted with the **ext4**
 filesystem. Moreover, we check that the labels of the root and boot
-partions are, respectively, '**fedora**' and '**BOOT**'. Finally, we
-check that the root and boot partitions contain the files and binaries
-required to complete the encryption process.
+partions are, respectively, **fedora** and **BOOT**, if not otherwise
+specified via the **--root-label** and **--boot-label** options.
+Finally, we check that the root and boot partitions contain the files
+and binaries required to complete the encryption process.
 
 These checks are performed in order to prevent encryptroot.asahi (or the
 user) from unintentionally overwriting non-Fedora Asahi partitions (e.g.
