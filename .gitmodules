@@ -1,0 +1,3 @@
+[submodule "tests/asahi-fedora-usb"]
+	path = tests/asahi-fedora-usb
+	url = https://github.com/leifliddy/asahi-fedora-usb
