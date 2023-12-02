@@ -172,16 +172,18 @@ than unpacking the initramfs and looking for **cryptsetup**(8),
 
 **1. Filesystem resizing**  
 For btrfs root filesystems, **encryptroot.asahi** detects whether the
-root filesystem was already shrunk by 32 MiB. If this is the case,
-re-running the script with the same arguments won't resize it a second
-time. If you manually shrank the btrfs root filesystem by a different
-amount (or if your root partition is formatted with the ext4
-filesystem), **AND** if the full-disk encryption step was never
-initiated, re-running the script will shrink the filesystem again by 32
-MiB. And then again. And so on.
+root filesystem device slack is at least 32 MiB large. If this is the
+case, the filesystem is not shrunk. In particular, re-running
+**encryptroot.asahi** with the same arguments will not resize a btrfs
+filesystem.
 
-Filesystem resizing is **never** performed on either partially or fully
-encrypted *rootdisk*s (see below).
+If your root partition's filesystem is ext4 **AND** if the full-disk
+encryption step was never initiated, re-running **encryptroot.asahi**
+will shrink the filesystem again by 32 MiB.
+
+In any case, filesystem resizing is **never** performed on either
+partially or fully encrypted *rootdisk*s, nor on their decrypted
+content.
 
 **2. Full-disk encryption**  
 At startup, **encryptroot.asahi** detects whether the encryption step
