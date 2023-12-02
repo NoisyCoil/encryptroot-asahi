@@ -392,7 +392,7 @@ run_chroot() {
 
 chroot_update_crypttab() {
     [ -z "$VERBOSE" ] || echo
-    [ -z "$VERBOSE" ] || echo "Writing /etc/crypttab..."
+    [ -z "$VERBOSE" ] || echo "Updating /etc/crypttab..."
     touch /etc/crypttab
     chmod 0600 /etc/crypttab
     grep -E "UUID=$LUKS_UUID" /etc/crypttab >/dev/null 2>&1 ||
@@ -401,13 +401,17 @@ chroot_update_crypttab() {
 
 chroot_update_grub() {
     if ! grep -E "GRUB_CMDLINE_LINUX_DEFAULT=.*rd.luks.uuid=$LUKS_UUID" /etc/default/grub >/dev/null 2>&1; then
-        [ -z "$VERBOSE" ] || echo "Updating grub..."
+        [ -z "$VERBOSE" ] || echo "Updating /etc/default/grub..."
         if grep "GRUB_CMDLINE_LINUX_DEFAULT=" /etc/default/grub >/dev/null 2>&1; then
             sed -i -E "s|GRUB_CMDLINE_LINUX_DEFAULT=\"(.*)\"|GRUB_CMDLINE_LINUX_DEFAULT=\"\1 rd.luks.uuid=$LUKS_UUID\"|" /etc/default/grub
         else
             echo "GRUB_CMDLINE_LINUX_DEFAULT=\"rd.luks.uuid=$LUKS_UUID\"" >>/etc/default/grub
         fi
-        grub2-mkconfig -o "$(readlink -f /etc/grub2.cfg)"
+    fi
+    GRUBFILE="$(readlink -f /etc/grub2.cfg)"
+    if ! { grep "$LUKS_UUID" "$GRUBFILE" >/dev/null 2>&1 && grep -R "$LUKS_UUID" "/boot/loader/entries" >/dev/null 2>&1; }; then
+        [ -z "$VERBOSE" ] || echo "Updating grub configuration..."
+        grub2-mkconfig -o "$GRUBFILE"
     fi
 }
 
