@@ -31,8 +31,9 @@ the encryption process. The **RECOVERY** section details its recovery
 logic. These sections can be of help if the process fails: they contain
 useful information and debug steps.
 
-By running this script you agree not to hold its author accountable for
-any loss of data or any other form of damage resulting from its use.
+By running **encryptroot.asahi** you agree not to hold its author
+accountable for any loss of data or any other form of damage resulting
+from its use.
 
 # ARGUMENTS
 
@@ -160,7 +161,7 @@ and if the same UUID is contained in the boot partition's files (usually
 **/boot/loader/entries**).
 
 **4. initramfs (chroot)**  
-The initramfs is regenerated to make sure that it can decrypt the root
+The initramfs is recreated to make sure that it can decrypt the root
 partition at boot time. This step is also performed inside a chroot.
 
 There is no obvious way to check that this step was successful, other
@@ -179,34 +180,37 @@ filesystem), **AND** if the full-disk encryption step was never
 initiated, re-running the script will shrink the filesystem again by 32
 MiB. And then again. And so on.
 
+Filesystem resizing is **never** performed on either partially or fully
+encrypted *rootdisk*s (see below).
+
 **2. Full-disk encryption**  
-**encryptroot.asahi** detects whether the encryption step was started
-before. If it determines that a previous encryption step was interrupted
-while in progress, it tries to resume it and bring it to completion. It
-does so by running again
+At startup, **encryptroot.asahi** detects whether the encryption step
+was already attempted on *rootdisk*. If it determines that the
+encryption step was interrupted while in progress, it tries to resume it
+and bring it to completion. It does so by re-executing
 
 \# **cryptsetup reencrypt --encrypt --reduce-device-size 32M**
 *rootdisk*
 
-(see **cryptsetup-reencrypt**(8) for the relevant documentation). If
-everything goes right, no data corruption will result from this
-re-running.
+(see **cryptsetup-reencrypt**(8) for the relevant documentation). Under
+normal circumstances, no data corruption will result from re-running the
+command.
 
-If **encryptroot.asahi** detects that *rootdisk* is fully encrypted, for
-good measure, it asks whether you picked the wrong disk. If you tell it
-to continue, it assumes that you're trying to resume the process from a
-later step, and that the root disk you picked is the same you used in
-the previous steps.
+If, at startup, **encryptroot.asahi** detects that *rootdisk* is fully
+encrypted, for good measure it asks whether you picked the wrong disk.
+If you tell it to continue, it assumes that you're trying to resume the
+process from a later step, and that the root disk you picked is the same
+one you used in the previous steps.
 
 **3. /etc/crypttab and grub (chroot)**  
 **encryptroot.asahi** detects whether the encrypted root partition was
-already registered in **/etc/crypttab** and **/etc/default/grub**, and
-doesn't do so again if it was. **grub2-mkconfig**, on the other hand, is
-always run. This is a routine operation and should not cause any issue.
+already registered with **/etc/crypttab** and **/etc/default/grub**, and
+doesn't do so again if it was. If it was registered with
+**/etc/default/grub**, it doesn't run **grub2-mkconfig**.
 
 **4. initramfs (chroot)**  
-The initramfs is always regenerated. This is a routine operation and
-should not cause any issue.
+The initramfs is always recreated. This is a routine operation and will
+not cause issues under normal circumstances.
 
 **NOTE**  
 Resuming the encryption process from the **Full-disk encryption** stage
@@ -218,8 +222,8 @@ one additional time.
 
 # CREDITS
 
-The encryption procedure followed by this script is largely taken from
-David Alger,
+The encryption procedure followed by **encryptroot.asahi** is largely
+taken from David Alger,
 &lt;https://davidalger.com/posts/fedora-asahi-remix-on-apple-silicon-with-luks-encryption&gt;
 (October 2023 revision).
 

@@ -12,8 +12,7 @@ By running this script you agree not to hold its author accountable for any loss
 
 ## Credits
 
-The encryption procedure followed by **encryptroot.asahi** is largely taken from David Alger, <https://davidalger.com/posts/fedora-asahi-remix-on-apple-silicon-with-luks-encryption>
-(October 2023 revision).
+The encryption procedure followed by **encryptroot.asahi** is largely taken from David Alger, <https://davidalger.com/posts/fedora-asahi-remix-on-apple-silicon-with-luks-encryption> (October 2023 revision).
 
 ## Copyright
 
