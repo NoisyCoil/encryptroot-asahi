@@ -152,7 +152,7 @@ both contain the root disk's LUKS UUID, which can be obtained by
 
 # \fBcryptsetup luksUUID\fP \fIrootdisk\fP
 
-and if the same UUID is contained in the boot partition's files (usually
+and if the same UUID is contained in the boot partition's grub files (usually
 \fB/boot/grub2/grub.cfg\fP and the relevant files in
 \fB/boot/loader/entries\fP).
 
@@ -202,8 +202,8 @@ previous steps.
 \fB3. /etc/crypttab and grub (chroot)\fP
 \fBencryptroot.asahi\fP detects whether the encrypted root partition was
 already registered with \fB/etc/crypttab\fP and \fB/etc/default/grub\fP, and
-doesn't do so again if it was. If it was registered with
-\fB/etc/default/grub\fP, it doesn't run \fBgrub2-mkconfig\fP.
+doesn't do so again if it was. If the encrypted root partition was registered
+with the boot partition's grub files, it doesn't run \fBgrub2-mkconfig\fP.
 
 .TP
 \fB4. initramfs (chroot)\fP

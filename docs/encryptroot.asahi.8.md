@@ -156,8 +156,8 @@ both contain the root disk's LUKS UUID, which can be obtained by
 
 \# **cryptsetup luksUUID** *rootdisk*
 
-and if the same UUID is contained in the boot partition's files (usually
-**/boot/grub2/grub.cfg** and the relevant files in
+and if the same UUID is contained in the boot partition's grub files
+(usually **/boot/grub2/grub.cfg** and the relevant files in
 **/boot/loader/entries**).
 
 **4. initramfs (chroot)**  
@@ -205,8 +205,9 @@ one you used in the previous steps.
 **3. /etc/crypttab and grub (chroot)**  
 **encryptroot.asahi** detects whether the encrypted root partition was
 already registered with **/etc/crypttab** and **/etc/default/grub**, and
-doesn't do so again if it was. If it was registered with
-**/etc/default/grub**, it doesn't run **grub2-mkconfig**.
+doesn't do so again if it was. If the encrypted root partition was
+registered with the boot partition's grub files, it doesn't run
+**grub2-mkconfig**.
 
 **4. initramfs (chroot)**  
 The initramfs is always recreated. This is a routine operation and will
