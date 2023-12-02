@@ -24,9 +24,9 @@ not able to do so, please don't run
 steps involved in the encryption process. The <strong>RECOVERY</strong>
 section details its recovery logic. These sections can be of help if the
 process fails: they contain useful information and debug steps.</p>
-<p>By running this script you agree not to hold its author accountable
-for any loss of data or any other form of damage resulting from its
-use.</p>
+<p>By running <strong>encryptroot.asahi</strong> you agree not to hold
+its author accountable for any loss of data or any other form of damage
+resulting from its use.</p>
 <h1>ARGUMENTS</h1>
 <dl>
 <dt><em>rootdisk</em></dt>
@@ -177,9 +177,8 @@ UUID, which can be obtained by</p>
 <dl>
 <dt><strong>4. initramfs (chroot)</strong></dt>
 <dd>
-<p>The initramfs is regenerated to make sure that it can decrypt the
-root partition at boot time. This step is also performed inside a
-chroot.</p>
+<p>The initramfs is recreated to make sure that it can decrypt the root
+partition at boot time. This step is also performed inside a chroot.</p>
 </dd>
 </dl>
 <p>There is no obvious way to check that this step was successful, other
@@ -199,37 +198,42 @@ with the ext4 filesystem), <strong>AND</strong> if the full-disk
 encryption step was never initiated, re-running the script will shrink
 the filesystem again by 32 MiB. And then again. And so on.</p>
 </dd>
+</dl>
+<p>Filesystem resizing is <strong>never</strong> performed on either
+partially or fully encrypted <em>rootdisk</em>s (see below).</p>
+<dl>
 <dt><strong>2. Full-disk encryption</strong></dt>
 <dd>
-<p><strong>encryptroot.asahi</strong> detects whether the encryption
-step was started before. If it determines that a previous encryption
-step was interrupted while in progress, it tries to resume it and bring
-it to completion. It does so by running again</p>
+<p>At startup, <strong>encryptroot.asahi</strong> detects whether the
+encryption step was already attempted on <em>rootdisk</em>. If it
+determines that the encryption step was interrupted while in progress,
+it tries to resume it and bring it to completion. It does so by
+re-executing</p>
 </dd>
 </dl>
 <p># <strong>cryptsetup reencrypt --encrypt --reduce-device-size
 32M</strong> <em>rootdisk</em></p>
 <p>(see <strong>cryptsetup-reencrypt</strong>(8) for the relevant
-documentation). If everything goes right, no data corruption will result
-from this re-running.</p>
-<p>If <strong>encryptroot.asahi</strong> detects that <em>rootdisk</em>
-is fully encrypted, for good measure, it asks whether you picked the
-wrong disk. If you tell it to continue, it assumes that you're trying to
-resume the process from a later step, and that the root disk you picked
-is the same you used in the previous steps.</p>
+documentation). Under normal circumstances, no data corruption will
+result from re-running the command.</p>
+<p>If, at startup, <strong>encryptroot.asahi</strong> detects that
+<em>rootdisk</em> is fully encrypted, for good measure it asks whether
+you picked the wrong disk. If you tell it to continue, it assumes that
+you're trying to resume the process from a later step, and that the root
+disk you picked is the same one you used in the previous steps.</p>
 <dl>
 <dt><strong>3. /etc/crypttab and grub (chroot)</strong></dt>
 <dd>
 <p><strong>encryptroot.asahi</strong> detects whether the encrypted root
-partition was already registered in <strong>/etc/crypttab</strong> and
+partition was already registered with <strong>/etc/crypttab</strong> and
 <strong>/etc/default/grub</strong>, and doesn't do so again if it was.
-<strong>grub2-mkconfig</strong>, on the other hand, is always run. This
-is a routine operation and should not cause any issue.</p>
+If it was registered with <strong>/etc/default/grub</strong>, it doesn't
+run <strong>grub2-mkconfig</strong>.</p>
 </dd>
 <dt><strong>4. initramfs (chroot)</strong></dt>
 <dd>
-<p>The initramfs is always regenerated. This is a routine operation and
-should not cause any issue.</p>
+<p>The initramfs is always recreated. This is a routine operation and
+will not cause issues under normal circumstances.</p>
 </dd>
 <dt><strong>NOTE</strong></dt>
 <dd>
@@ -243,8 +247,8 @@ root disk password one additional time.</p>
 </dd>
 </dl>
 <h1>CREDITS</h1>
-<p>The encryption procedure followed by this script is largely taken
-from David Alger,
+<p>The encryption procedure followed by
+<strong>encryptroot.asahi</strong> is largely taken from David Alger,
 &lt;https://davidalger.com/posts/fedora-asahi-remix-on-apple-silicon-with-luks-encryption&gt;
 (October 2023 revision).</p>
 <h1>REPORTING BUGS</h1>

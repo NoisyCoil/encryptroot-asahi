@@ -28,8 +28,8 @@ encryption process. The \fBRECOVERY\fP section details its recovery logic. \
 These sections can be of help if the process fails: they contain useful
 information and debug steps.
 
-By running this script you agree not to hold its author accountable for any
-loss of data or any other form of damage resulting from its use.
+By running \fBencryptroot.asahi\fP you agree not to hold its author accountable
+for any loss of data or any other form of damage resulting from its use.
 
 .SH ARGUMENTS
 .TP
@@ -158,8 +158,8 @@ and if the same UUID is contained in the boot partition's files (usually
 
 .TP
 \fB4. initramfs (chroot)\fP
-The initramfs is regenerated to make sure that it can decrypt the root
-partition at boot time. This step is also performed inside a chroot.
+The initramfs is recreated to make sure that it can decrypt the root partition
+at boot time. This step is also performed inside a chroot.
 
 There is no obvious way to check that this step was successful, other than
 unpacking the initramfs and looking for \fBcryptsetup\fP(8),
@@ -176,35 +176,39 @@ partition is formatted with the ext4 filesystem), \fBAND\fP if the full-disk
 encryption step was never initiated, re-running the script will shrink the
 filesystem again by 32 MiB. And then again. And so on.
 
+Filesystem resizing is \fBnever\fP performed on either partially or fully
+encrypted \fIrootdisk\fPs (see below).
+
 .TP
 \fB2. Full-disk encryption\fP
-\fBencryptroot.asahi\fP detects whether the encryption step was started
-before. If it determines that a previous encryption step was interrupted while
-in progress, it tries to resume it and bring it to completion. It does so by
-running again
+At startup, \fBencryptroot.asahi\fP detects whether the encryption step was
+already attempted on \fIrootdisk\fP. If it determines that the encryption step
+was interrupted while in progress, it tries to resume it and bring it to
+completion. It does so by re-executing
 
 # \fBcryptsetup reencrypt --encrypt --reduce-device-size 32M\fP \fIrootdisk\fP
 
-(see \fBcryptsetup-reencrypt\fP(8) for the relevant documentation). If
-everything goes right, no data corruption will result from this re-running.
+(see \fBcryptsetup-reencrypt\fP(8) for the relevant documentation). Under
+normal circumstances, no data corruption will result from re-running the
+command.
 
-If \fBencryptroot.asahi\fP detects that \fIrootdisk\fP is fully encrypted, for
-good measure, it asks whether you picked the wrong disk. If you tell it to
-continue, it assumes that you're trying to resume the process from a later
-step, and that the root disk you picked is the same you used in the previous
-steps.
+If, at startup, \fBencryptroot.asahi\fP detects that \fIrootdisk\fP is fully
+encrypted, for good measure it asks whether you picked the wrong disk. If you
+tell it to continue, it assumes that you're trying to resume the process from a
+later step, and that the root disk you picked is the same one you used in the
+previous steps.
 
 .TP
 \fB3. /etc/crypttab and grub (chroot)\fP
 \fBencryptroot.asahi\fP detects whether the encrypted root partition was
-already registered in \fB/etc/crypttab\fP and \fB/etc/default/grub\fP, and
-doesn't do so again if it was. \fBgrub2-mkconfig\fP, on the other hand, is
-always run. This is a routine operation and should not cause any issue.
+already registered with \fB/etc/crypttab\fP and \fB/etc/default/grub\fP, and
+doesn't do so again if it was. If it was registered with
+\fB/etc/default/grub\fP, it doesn't run \fBgrub2-mkconfig\fP.
 
 .TP
 \fB4. initramfs (chroot)\fP
-The initramfs is always regenerated. This is a routine operation and should not
-cause any issue.
+The initramfs is always recreated. This is a routine operation and will not
+cause issues under normal circumstances.
 
 .TP
 \fBNOTE\fP
@@ -216,7 +220,8 @@ decrypted device, which requires you to enter the root disk password one
 additional time.
 
 .SH CREDITS
-The encryption procedure followed by this script is largely taken from David Alger,
+The encryption procedure followed by \fBencryptroot.asahi\fP is largely taken
+from David Alger,
 <https://davidalger.com/posts/fedora-asahi-remix-on-apple-silicon-with-luks-encryption>
 (October 2023 revision).
 
