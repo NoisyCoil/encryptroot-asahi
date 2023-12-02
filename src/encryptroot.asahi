@@ -295,13 +295,14 @@ fs_shrink() {
 incomplete_encryption_warning() {
     if [ "$(lsblk -ndo FSTYPE "$ROOTDISK" 2>/dev/null)" = "crypto_LUKS" ]; then
         echo
-        echo "***** WARNING ********************************************************"
-        echo "*                                                                    *"
-        echo "*   Even if the root disk shows up as a LUKS device, the full-disk   *"
-        echo "*   encryption step was NOT completed. Your data is NOT secured at   *"
-        echo "*   this stage. Read the manpage for more information.               *"
-        echo "*                                                                    *"
-        echo "**********************************************************************"
+        echo "***** WARNING **********************************************************"
+        echo "*                                                                      *"
+        echo "*   Even if the root disk now shows up as a LUKS device, the full-     *"
+        echo "*   disk encryption step was NOT completed. Your data is NOT secured   *"
+        echo "*   at this stage. Moreover, you will NOT be able to boot from the     *"
+        echo "*   root partition. Read the manpage for more information.             *"
+        echo "*                                                                      *"
+        echo "************************************************************************"
         echo
     fi
 }
