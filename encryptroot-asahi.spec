@@ -2,7 +2,7 @@
 %global         mansec 8
 
 Name:           encryptroot-asahi
-Version:        0.2.2
+Version:        0.2.3
 Release:        1%{?dist}
 Summary:        Encrypt your Fedora Asahi root partition
 
@@ -37,6 +37,10 @@ install -m 0644 docs/%{scriptname}.%{mansec} %{buildroot}/%{_mandir}/man%{mansec
 %{_mandir}/man%{mansec}/%{scriptname}.%{mansec}*
 
 %changelog
+* Sat Dec 02 2023 NoisyCoil <noisycoil@tutanota.com> 0.2.3-1
+- Improve docs
+- Only update grub if /etc/default/grub changed
+
 * Fri Dec 01 2023 NoisyCoil <noisycoil@tutanota.com> 0.2.2-1
 - Improve docs
 
