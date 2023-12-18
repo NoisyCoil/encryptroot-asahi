@@ -127,7 +127,19 @@ filesystems),</p>
 by mounting the root partition and running</p>
 <p># <strong>btrfs device usage</strong> <em>mountpoint</em></p>
 <p>If the "<strong>Device slack</strong>" field reads 32MiB (or 16MiB
-after encryption), it was successful.</p>
+after encryption), it was successful. In the latter case the check is
+quite more involved: first run</p>
+<p># <strong>dumpe2fs</strong> <em>rootdisk</em> | <strong>grep</strong>
+"^Block \(size\|count\)"</p>
+<p>to get the block size and block count of the root disk, then multiply
+them together. This will give you the size (in bytes) of the root
+filesystem. Then get the size of the root partition in bytes by
+running</p>
+<p># <strong>lsblk -no SIZE --bytes</strong> <em>rootdisk</em></p>
+<p>If the difference between the root partition size and the root
+filesystem size is 32MiB (or 16 MiB after encryption, in case you run
+the above commands on the decrypted root disk device), the step was
+successful.</p>
 <dl>
 <dt><strong>2. Full-disk encryption</strong></dt>
 <dd>
@@ -189,17 +201,13 @@ than unpacking the initramfs and looking for
 <dl>
 <dt><strong>1. Filesystem resizing</strong></dt>
 <dd>
-<p>For btrfs root filesystems, <strong>encryptroot.asahi</strong>
-detects whether the root filesystem device slack is at least 32 MiB
-large. If this is the case, the filesystem is not shrunk. In particular,
-re-running <strong>encryptroot.asahi</strong> with the same arguments
-will not resize a btrfs filesystem.</p>
+<p><strong>encryptroot.asahi</strong> detects whether the root
+filesystem is at least 32 MiB smaller than the root partition. If it is,
+the filesystem is not shrunk. In particular, re-running
+<strong>encryptroot.asahi</strong> with the same arguments as a previous
+run will not resize the root filesystem.</p>
 </dd>
 </dl>
-<p>If your root partition's filesystem is ext4 <strong>AND</strong> if
-the full-disk encryption step was never initiated, re-running
-<strong>encryptroot.asahi</strong> will shrink the filesystem again by
-32 MiB.</p>
 <p>In any case, filesystem resizing is <strong>never</strong> performed
 on either partially or fully encrypted <em>rootdisk</em>s, nor on their
 decrypted content.</p>
