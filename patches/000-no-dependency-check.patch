@@ -10,7 +10,7 @@ Index: encryptroot-asahi/src/encryptroot.asahi
 -    if [ -z "$EXT4_FS" ]; then
 -        RESIZE_PROGS="btrfs"
 -    else
--        RESIZE_PROGS="e2fsck resize2fs"
+-        RESIZE_PROGS="dumpe2fs e2fsck resize2fs"
 -    fi
 -    # shellcheck disable=2086
 -    for c in arch-chroot cryptsetup lsblk $RESIZE_PROGS uuidgen; do
