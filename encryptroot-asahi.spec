@@ -3,7 +3,7 @@
 
 Name:           encryptroot-asahi
 Version:        0.2.6
-Release:        1%{?dist}
+Release:        2
 Summary:        Encrypt your Fedora Asahi root partition
 
 License:        MIT
@@ -37,6 +37,9 @@ install -m 0644 docs/%{scriptname}.%{mansec} %{buildroot}/%{_mandir}/man%{mansec
 %{_mandir}/man%{mansec}/%{scriptname}.%{mansec}*
 
 %changelog
+* Mon Dec 18 2023 NoisyCoil <noisycoil@tutanota.com> 0.2.6-2
+- Adapt 000-no-dependency-check.patch to recent changes
+
 * Mon Dec 18 2023 NoisyCoil <noisycoil@tutanota.com> 0.2.6-1
 - Fix empty {root,boot}-label not recognized
 - Avoid resizing ext4 FS twice before encryption
