@@ -24,11 +24,20 @@ exit_error_with_usage() {
     exit 1
 }
 
+# Do not allow evironmentally-set {R,B}OOTLABEL_EXP: we must also set
+# {R,B}OOTLABEL_EXP_SET right for the checks to work as intended. For the
+# same reason, Do not allow evironmentally-set {R,B}OOTLABEL_EXP_SET.
+ROOTLABEL_EXP=""
+ROOTLABEL_EXP_SET=""
+BOOTLABEL_EXP=""
+BOOTLABEL_EXP_SET=""
+
 PARGS=0
 while [ $# -gt 0 ]; do
     case "$1" in
     --boot-label)
         BOOTLABEL_EXP="$2"
+        BOOTLABEL_EXP_SET="1"
         shift
         shift
         ;;
@@ -52,6 +61,7 @@ while [ $# -gt 0 ]; do
         ;;
     --root-label)
         ROOTLABEL_EXP="$2"
+        ROOTLABEL_EXP_SET="1"
         shift
         shift
         ;;
@@ -138,7 +148,7 @@ explain_and_warn() {
 
 rootdisk_check() {
     ROOTLABEL="$(lsblk -ndo LABEL "$ROOTDISK" 2>/dev/null)"
-    ROOTLABEL_EXP="${ROOTLABEL_EXP:-"fedora"}"
+    [ "$ROOTLABEL_EXP" = "" ] && [ "$ROOTLABEL_EXP_SET" != "1" ] && ROOTLABEL_EXP="fedora"
     [ "$ROOTLABEL" = "$ROOTLABEL_EXP" ] || exit_error "expected root disk label '$ROOTLABEL_EXP', found '$ROOTLABEL'"
     for MNTPOINT in $(findmnt -no TARGET "$ROOTDISK" 2>/dev/null); do
         [ "$MNTPOINT" = "/" ] && exit_error "cannot encrypt root disk currently mounted on /"
@@ -209,7 +219,7 @@ rootdisk_luks_check() {
 
 bootdisk_check() {
     BOOTLABEL="$(lsblk -ndo LABEL "$BOOTDISK" 2>/dev/null)"
-    BOOTLABEL_EXP="${BOOTLABEL_EXP:-"BOOT"}"
+    [ "$BOOTLABEL_EXP" = "" ] && [ "$BOOTLABEL_EXP_SET" != "1" ] && BOOTLABEL_EXP="BOOT"
     [ "$BOOTLABEL" = "$BOOTLABEL_EXP" ] || exit_error "expected boot disk label '$BOOTLABEL_EXP', found '$BOOTLABEL'"
     [ -z "$VERBOSE" ] || echo "Checking boot disk content..."
     TMPDIR="$(mktemp -d)"
