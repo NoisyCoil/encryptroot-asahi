@@ -111,7 +111,19 @@ the root partition and running
 # \fBbtrfs device usage\fP \fImountpoint\fP
 
 If the "\fBDevice slack\fP" field reads 32MiB (or 16MiB after encryption), it
-was successful.
+was successful. In the latter case the check is quite more involved: first run
+
+# \fBdumpe2fs\fP \fIrootdisk\fP | \fBgrep\fP "^Block \\(size\\|count\\)"
+
+to get the block size and block count of the root disk, then multiply them
+together. This will give you the size (in bytes) of the root filesystem. Then
+get the size of the root partition in bytes by running
+
+# \fBlsblk -no SIZE --bytes\fP \fIrootdisk\fP
+
+If the difference between the root partition size and the root filesystem size
+is 32MiB (or 16 MiB after encryption, in case you run the above commands on the
+decrypted root disk device), the step was successful.
 
 .TP
 \fB2. Full-disk encryption\fP
@@ -168,14 +180,10 @@ unpacking the initramfs and looking for \fBcryptsetup\fP(8),
 .SH RECOVERY
 .TP
 \fB1. Filesystem resizing\fP
-For btrfs root filesystems, \fBencryptroot.asahi\fP detects whether the root
-filesystem device slack is at least 32 MiB large. If this is the case, the
-filesystem is not shrunk. In particular, re-running \fBencryptroot.asahi\fP
-with the same arguments will not resize a btrfs filesystem.
-
-If your root partition's filesystem is ext4 \fBAND\fP if the full-disk
-encryption step was never initiated, re-running \fBencryptroot.asahi\fP will
-shrink the filesystem again by 32 MiB.
+\fBencryptroot.asahi\fP detects whether the root filesystem is at least 32 MiB
+smaller than the root partition. If it is, the filesystem is not shrunk. In
+particular, re-running \fBencryptroot.asahi\fP with the same arguments as a
+previous run will not resize the root filesystem.
 
 In any case, filesystem resizing is \fBnever\fP performed on either partially
 or fully encrypted \fIrootdisk\fPs, nor on their decrypted content.

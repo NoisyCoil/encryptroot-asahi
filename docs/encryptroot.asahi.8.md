@@ -114,7 +114,21 @@ mounting the root partition and running
 \# **btrfs device usage** *mountpoint*
 
 If the "**Device slack**" field reads 32MiB (or 16MiB after encryption),
-it was successful.
+it was successful. In the latter case the check is quite more involved:
+first run
+
+\# **dumpe2fs** *rootdisk* | **grep** "^Block \\size\\count\\"
+
+to get the block size and block count of the root disk, then multiply
+them together. This will give you the size (in bytes) of the root
+filesystem. Then get the size of the root partition in bytes by running
+
+\# **lsblk -no SIZE --bytes** *rootdisk*
+
+If the difference between the root partition size and the root
+filesystem size is 32MiB (or 16 MiB after encryption, in case you run
+the above commands on the decrypted root disk device), the step was
+successful.
 
 **2. Full-disk encryption**  
 The root partition is encrypted while preserving the data (that is,
@@ -171,15 +185,10 @@ than unpacking the initramfs and looking for **cryptsetup**(8),
 # RECOVERY
 
 **1. Filesystem resizing**  
-For btrfs root filesystems, **encryptroot.asahi** detects whether the
-root filesystem device slack is at least 32 MiB large. If this is the
-case, the filesystem is not shrunk. In particular, re-running
-**encryptroot.asahi** with the same arguments will not resize a btrfs
-filesystem.
-
-If your root partition's filesystem is ext4 **AND** if the full-disk
-encryption step was never initiated, re-running **encryptroot.asahi**
-will shrink the filesystem again by 32 MiB.
+**encryptroot.asahi** detects whether the root filesystem is at least 32
+MiB smaller than the root partition. If it is, the filesystem is not
+shrunk. In particular, re-running **encryptroot.asahi** with the same
+arguments as a previous run will not resize the root filesystem.
 
 In any case, filesystem resizing is **never** performed on either
 partially or fully encrypted *rootdisk*s, nor on their decrypted

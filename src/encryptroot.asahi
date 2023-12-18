@@ -100,7 +100,7 @@ check_dependencies() {
     if [ -z "$EXT4_FS" ]; then
         RESIZE_PROGS="btrfs"
     else
-        RESIZE_PROGS="e2fsck resize2fs"
+        RESIZE_PROGS="dumpe2fs e2fsck resize2fs"
     fi
     # shellcheck disable=2086
     for c in arch-chroot cryptsetup lsblk $RESIZE_PROGS uuidgen; do
@@ -269,14 +269,16 @@ fs_shrink_cleanup() {
 fs_shrink() {
     { [ -n "$ENCRYPTROOT_ASAHI_RESUME_REENCRYPTION" ] ||
         [ -n "$ENCRYPTROOT_ASAHI_SKIP_REENCRYPTION" ]; } && return
+    SKIP_MESSAGE="Skipping root disk filesystem shrinking (already done)."
+    SHRINK_MESSAGE="Shrinking root disk filesystem..."
     if [ -z "$EXT4_FS" ]; then
         TMPDIR="$(mktemp -d)"
         mount "$ROOTDISK" "$TMPDIR" || exit_error "could not mount root disk $ROOTDISK for filesystem resizing"
         DEV_SLACK="$(btrfs device usage -m "$TMPDIR" 2>/dev/null | grep "Device slack" 2>/dev/null | sed -E 's|.*Device slack:\s*([0-9]+).*MiB|\1|' 2>/dev/null)"
         if [ "$DEV_SLACK" -ge 32 ]; then
-            [ -z "$VERBOSE" ] || echo "Skipping root disk filesystem shrinking (already done)."
+            [ -z "$VERBOSE" ] || echo "$SKIP_MESSAGE"
         else
-            [ -z "$VERBOSE" ] || echo "Shrinking root disk filesystem..."
+            [ -z "$VERBOSE" ] || echo "$SHRINK_MESSAGE"
             SS="$((32 - DEV_SLACK))"
             trap 'fs_shrink_cleanup; exit 1;' EXIT INT TERM QUIT HUP ABRT
             btrfs filesystem resize "-${SS}M" "$TMPDIR" || exit_error "could not shrink the root disk btrfs filesystem to make room for the LUKS headers"
@@ -285,13 +287,23 @@ fs_shrink() {
         fs_shrink_cleanup
         unset TMPDIR
     else
-        # TODO: DO NOT RESIZE TWICE
-        e2fsck -f -y "$ROOTDISK" || exit_error "could not run e2fsck before shrinking the root disk ext4 filesystem"
-        ROOTSIZE="$(lsblk -no SIZE --bytes "$ROOTDISK")"
-        ROOTSIZE="$((ROOTSIZE / 1024 / 1024))"
-        NEW_ROOTSIZE="$((ROOTSIZE - 32))"
-        resize2fs "$ROOTDISK" "${NEW_ROOTSIZE}M" || exit_error "could not shrink the root disk ext4 filesystem to make room for the LUKS headers"
+        ROOTPSIZE="$(lsblk -no SIZE --bytes "$ROOTDISK")"
+        ROOTPSIZE="$((ROOTPSIZE / 1024 / 1024))"
+        FSSIZE_OP="$(dumpe2fs "$ROOTDISK" 2>/dev/null | grep "^Block \(size\|count\)" 2>/dev/null | tr -d ':' | tr -s '[:space:]' | cut -d ' ' -f3 | tr '[:space:]' '*' | sed 's|*$||g')"
+        echo "$FSSIZE_OP" | grep -E '[0-9]+\*[0-9]+' >/dev/null 2>&1 || exit_error "could not retrieve rootdisk filesystem size"
+        ROOTFSSIZE="$((("$FSSIZE_OP") / 1024 / 1024))"
+        echo "$ROOTFSSIZE" | grep -E '^[0-9]+$' >/dev/null 2>&1 || exit_error "could not retrieve rootdisk filesystem size"
+        ROOTDSIZE="$((ROOTPSIZE - ROOTFSSIZE))"
+        if [ "$ROOTDSIZE" -ge 32 ]; then
+            [ -z "$VERBOSE" ] || echo "$SKIP_MESSAGE"
+        else
+            [ -z "$VERBOSE" ] || echo "$SHRINK_MESSAGE"
+            e2fsck -f -y "$ROOTDISK" || exit_error "could not run e2fsck before shrinking the root disk ext4 filesystem"
+            NEW_ROOTFSSIZE="$((ROOTPSIZE - 32))"
+            resize2fs "$ROOTDISK" "${NEW_ROOTFSSIZE}M" || exit_error "could not shrink the root disk ext4 filesystem to make room for the LUKS headers"
+        fi
     fi
+    unset SKIP_MESSAGE SHRINK_MESSAGE
 }
 
 incomplete_encryption_warning() {
