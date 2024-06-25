@@ -167,6 +167,7 @@ rootdisk_check() {
     [ -L "$ROOTDIR/etc/grub2.cfg" ] && GRUB2_ETC_LINK_FOUND=1
     [ -f "$ROOTDIR/usr/sbin/grub2-mkconfig" ] && GRUB2_MKCONFIG_FOUND=1
     [ -f "$ROOTDIR/usr/bin/dracut" ] && DRACUT_FOUND=1
+    [ -f "$ROOTDIR/usr/sbin/cryptsetup" ] && CRYPTSETUP_FOUND=1
     umount "$TMPDIR" || exit_error "could not unmount root disk $ROOTDISK after preliminary checks"
     rm -df "$TMPDIR" || true
     unset ROOTDIR TMPDIR
@@ -180,6 +181,7 @@ rootdisk_check() {
     [ "$GRUB2_ETC_LINK_FOUND" = "1" ] || exit_error "could not find /etc/grub2.cfg in root disk filesystem"
     [ "$GRUB2_MKCONFIG_FOUND" = "1" ] || exit_error "could not find /usr/sbin/grub2-mkconfig in root disk filesystem"
     [ "$DRACUT_FOUND" = "1" ] || exit_error "could not find /usr/bin/dracut in root disk filesystem"
+    [ "$CRYPTSETUP_FOUND" = "1" ] || exit_error "could not find /usr/sbin/cryptsetup in root disk filesystem. If you selected the correct root disk, please install cryptsetup on the system you want to encrypt and rerun $THIS_SCRIPT_NAME"
 }
 
 rootdisk_luks_check_cleanup() {
