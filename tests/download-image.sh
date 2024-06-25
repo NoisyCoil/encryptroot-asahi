@@ -7,7 +7,7 @@ exit_error() {
     exit 1
 }
 
-IMAGE="${IMAGE:-"Fedora Asahi Remix 39 Minimal"}"
+IMAGE="${IMAGE:-"Fedora Asahi Remix 40 Minimal"}"
 BASEURL="https://alx.sh"
 INSTALLER_DATA_LINK="$(curl -L "$BASEURL" 2>/dev/null | grep INSTALLER_DATA= 2>/dev/null | sed -E 's|^.*INSTALLER_DATA=(.*)$|\1|' 2>/dev/null)"
 [ -n "$INSTALLER_DATA_LINK" ] || exit_error "empty installer data link"
