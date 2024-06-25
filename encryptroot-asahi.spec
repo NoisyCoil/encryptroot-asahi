@@ -2,8 +2,8 @@
 %global         mansec 8
 
 Name:           encryptroot-asahi
-Version:        0.2.6
-Release:        2%{?dist}
+Version:        0.2.7
+Release:        1
 Summary:        Encrypt your Fedora Asahi root partition
 
 License:        MIT
@@ -37,6 +37,9 @@ install -m 0644 docs/%{scriptname}.%{mansec} %{buildroot}/%{_mandir}/man%{mansec
 %{_mandir}/man%{mansec}/%{scriptname}.%{mansec}*
 
 %changelog
+* Tue Jun 25 2024 NoisyCoil <noisycoil@tutanota.com> 0.2.7-1
+- Die if cryptsetup is not installed in the partition to be encrypted
+
 * Mon Dec 18 2023 NoisyCoil <noisycoil@tutanota.com> 0.2.6-2
 - Adapt 000-no-dependency-check.patch to recent changes
 
