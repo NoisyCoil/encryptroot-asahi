@@ -1,21 +1,35 @@
 <h1>NAME</h1>
-<p>encryptroot.asahi - encrypt the root partition of your Fedora Asahi
+<p>encryptroot.asahi - encrypt the root partition of your Asahi
 installation</p>
 <h1>SYNOPSIS</h1>
 <p><strong>encryptroot.asahi</strong> [ <strong>--boot-label</strong>
-<em>boot_label</em> ] [ <strong>-d</strong> <em>device_name</em> ] [
-<strong>--root-label</strong> <em>root_label</em> ] [
-<strong>-v</strong> ] <em>rootdisk</em> <em>bootdisk</em></p>
+<em>boot_label</em> ] [ <strong>--debian</strong> ] [
+<strong>-d</strong> <em>device_name</em> ] [ <strong>--ext4</strong> ] [
+<strong>--no-subvols</strong> ] [ <strong>--root-label</strong>
+<em>root_label</em> ] [ <strong>-v</strong> ] <em>rootdisk</em>
+<em>bootdisk</em></p>
 <p><strong>encryptroot.asahi</strong> [ <strong>-h</strong> ]</p>
 <h1>DESCRIPTION</h1>
 <p><strong>encryptroot.asahi</strong> is an interactive script that
-allows you to encrypt the root partition of your Fedora Asahi
-installation without deleting its contents. It is meant to be executed
-from an external USB drive hosting an Asahi OS, or from a regular Linux
-virtual machine running on macOS. It may horribly screw up your system
-if executed from your Fedora Asahi installation (this scenario is
-completely untested, please, just don't).</p>
-<p>Unless you've just installed Fedora Asahi, backup your system before
+allows you to encrypt the root partition of your Asahi installation
+without deleting its contents. It is meant to be executed from an
+external USB drive hosting an Asahi OS, or from a regular Linux virtual
+machine running on macOS. It may horribly screw up your system if
+executed from your Asahi installation (this scenario is completely
+untested, please, just don't). It only supports partition layouts where
+the boot partition is separate from the root partition, and ext4
+boot-partition filesystems.</p>
+<p>There are two mode of operations: fedora mode (default) and debian
+mode. When running in fedora mode, <strong>encryptroot.asahi</strong>
+performs preliminary checks under the assumption that you are encrypting
+an official Fedora Asahi Remix installation. Some of these assumptions
+can be relaxed by suitable options (see below). When running in debian
+mode, it performs fewer checks due to the fact that there is no standard
+Debian Asahi installation. As long as you pass the correct
+<em>rootdisk</em> and <em>bootdisk</em> arguments and follow
+instructions, this will not be less secure than operating in fedora
+mode.</p>
+<p>Unless you've just installed Asahi Linux, backup your system before
 running <strong>encryptroot.asahi</strong>. As the user of this script,
 you are expected to be able to manually recover from failure. If you are
 not able to do so, please don't run
@@ -45,15 +59,21 @@ root partition.</p>
 <dd>
 <p>The expected boot partition label. See also '<strong>OPERATIONS - 0.
 Preliminary checks</strong>'. Default if not provided:
-<strong>BOOT</strong>.</p>
+<strong>BOOT</strong> in fedora mode, ignored in debian mode.</p>
+</dd>
+<dt><strong>--debian</strong></dt>
+<dd>
+<p>Switch from fedora mode to debian mode. Implies
+<strong>--ext4</strong>.</p>
 </dd>
 <dt><strong>-d</strong> <em>device_name</em>,
 <strong>--device-name</strong> <em>device_name</em></dt>
 <dd>
-<p>The name of the mapped (decrypted) root device to be used on Fedora
-Asahi, as in <strong>/dev/mapper/device_name</strong>. Stored in
+<p>The name of the mapped (decrypted) root device to be used in Asahi
+Linux, as in <strong>/dev/mapper/device_name</strong>. Stored in
 <strong>/etc/crypttab</strong>. Default if not provided:
-<strong>fedora-root</strong>.</p>
+<strong>fedora-root</strong> in fedora mode,
+<strong>debian-root</strong> in debian mode.</p>
 </dd>
 <dt><strong>--ext4</strong></dt>
 <dd>
@@ -76,7 +96,7 @@ for btrfs-formatted root filesystems.</p>
 <dd>
 <p>The expected root partition label. See also '<strong>OPERATIONS - 0.
 Preliminary checks</strong>'. Default if not provided:
-<strong>fedora</strong>.</p>
+<strong>fedora</strong> in fedora mode, ignored in debian mode.</p>
 </dd>
 <dt><strong>-v</strong>, <strong>--verbose</strong></dt>
 <dd>
@@ -92,22 +112,22 @@ Preliminary checks</strong>'. Default if not provided:
 <strong>--ext4</strong> option is enabled) and that the boot partition
 is formatted with the <strong>ext4</strong> filesystem. Then, if not
 otherwise specified via the <strong>--root-label</strong> and
-<strong>--boot-label</strong> options, we check that the labels of the
-root and boot partions are, respectively, <strong>fedora</strong> and
-<strong>BOOT</strong>. Unless the <strong>--no-subvols</strong> option
-(implied by <strong>--ext4</strong>) is enabled, we check that the btrfs
-root filesystem contains the <strong>root</strong> and
-<strong>home</strong> subvolumes. Finally, we check that the root and
-boot partitions contain the files and binaries required to complete the
-encryption process.</p>
-</dd>
-</dl>
+<strong>--boot-label</strong> options and not running in debian mode, we
+check that the labels of the root and boot partions are, respectively,
+<strong>fedora</strong> and <strong>BOOT</strong>. Unless the
+<strong>--no-subvols</strong> option (implied by
+<strong>--ext4</strong>) is enabled, we check that the btrfs root
+filesystem contains the <strong>root</strong> and <strong>home</strong>
+subvolumes. Finally, we check that the root and boot partitions contain
+the files and binaries required to complete the encryption process.</p>
 <p>These checks are performed in order to prevent
 <strong>encryptroot.asahi</strong> (or the user) from unintentionally
-overwriting non-Fedora Asahi partitions (e.g. the macOS partitions), and
-to make sure that the encryption process can be brought to completion.
+overwriting non-Asahi partitions (e.g. the macOS partitions), and to
+make sure that the encryption process can be brought to completion.
 Vanilla Fedora Asahi installations require no options to pass the checks
 (if they do it's a bug, please report it if you can!)</p>
+</dd>
+</dl>
 <dl>
 <dt><strong>1. Filesystem resizing</strong></dt>
 <dd>
@@ -115,8 +135,6 @@ Vanilla Fedora Asahi installations require no options to pass the checks
 make room for the (LUKS) headers generated during the encryption step.
 This is achieved using the <strong>btrfs-filesystem</strong>(8) command
 (for btrfs root filesystems),</p>
-</dd>
-</dl>
 <p># <strong>btrfs filesystem resize -32M</strong>
 <em>mountpoint</em></p>
 <p>or the <strong>resize2fs</strong>(8) command (for ext4 root
@@ -127,8 +145,8 @@ filesystems),</p>
 by mounting the root partition and running</p>
 <p># <strong>btrfs device usage</strong> <em>mountpoint</em></p>
 <p>If the "<strong>Device slack</strong>" field reads 32MiB (or 16MiB
-after encryption), it was successful. In the latter case the check is
-quite more involved: first run</p>
+after encryption), it was successful. In the latter case the check is a
+bit more involved: first run</p>
 <p># <strong>dumpe2fs</strong> <em>rootdisk</em> | <strong>grep</strong>
 "^Block \(size\|count\)"</p>
 <p>to get the block size and block count of the root disk, then multiply
@@ -140,14 +158,14 @@ running</p>
 filesystem size is 32MiB (or 16 MiB after encryption, in case you run
 the above commands on the decrypted root disk device), the step was
 successful.</p>
+</dd>
+</dl>
 <dl>
 <dt><strong>2. Full-disk encryption</strong></dt>
 <dd>
 <p>The root partition is encrypted while preserving the data (that is,
 unless things go wrong) using
 <strong>cryptsetup-reencrypt</strong>(8):</p>
-</dd>
-</dl>
 <p># <strong>cryptsetup reencrypt --encrypt --reduce-device-size
 32M</strong> <em>rootdisk</em></p>
 <p>From the moment this step starts, the system will detect the root
@@ -158,8 +176,8 @@ Nonetheless, the root partition is <strong>only</strong> actually fully
 encrypted when this step is <strong>completed</strong>.</p>
 <p>The encryption step can be interrupted and resumed at a later moment.
 While this behavior is useful in the event of recovery from failure, we
-advise the user not to intentionally stop the process while encryption
-is in progress.</p>
+advise you not to intentionally stop the process while encryption is in
+progress.</p>
 <p>You can check the encryption status of the root partition by
 running</p>
 <p># <strong>cryptsetup luksDump</strong> <em>rootdisk</em></p>
@@ -169,34 +187,38 @@ the encryption process was interrupted and must be resumed. Otherwise it
 completed successfully. Note that if the previous command complains
 about <em>rootdisk</em> being an invalid LUKS device, it means that this
 step never started in the first place.</p>
+</dd>
+</dl>
 <dl>
 <dt><strong>3. /etc/crypttab and grub (chroot)</strong></dt>
 <dd>
-<p>The now-encrypted root partition is registered for boot-time
+<p>The now encrypted root partition is registered for boot-time
 decryption first with the <strong>/etc/crypttab</strong> file (see also
 <strong>crypttab</strong>(5)) and then with <strong>grub</strong> (see
 also <strong>grub2-mkconfig</strong>(8)). This step is performed inside
 a chroot.</p>
-</dd>
-</dl>
 <p>This step was successfull if <strong>/etc/crypttab</strong> and
 <strong>/etc/default/grub</strong> both contain the root disk's LUKS
 UUID, which can be obtained by</p>
 <p># <strong>cryptsetup luksUUID</strong> <em>rootdisk</em></p>
 <p>and if the same UUID is contained in the boot partition's grub files
 (usually <strong>/boot/grub2/grub.cfg</strong> and the relevant files in
-<strong>/boot/loader/entries</strong>).</p>
+<strong>/boot/loader/entries</strong> for fedora, or /boot/grub/grub.cfg
+for debian).</p>
+</dd>
+</dl>
 <dl>
 <dt><strong>4. initramfs (chroot)</strong></dt>
 <dd>
 <p>The initramfs is recreated to make sure that it can decrypt the root
 partition at boot time. This step is also performed inside a chroot.</p>
-</dd>
-</dl>
 <p>There is no obvious way to check that this step was successful, other
 than unpacking the initramfs and looking for
 <strong>cryptsetup</strong>(8),
-<strong>systemd-ask-password</strong>(1), etc., inside it.</p>
+<strong>systemd-ask-password</strong>(1),
+<strong>cryptroot-unlock</strong>, etc., inside it.</p>
+</dd>
+</dl>
 <h1>RECOVERY</h1>
 <dl>
 <dt><strong>1. Filesystem resizing</strong></dt>
@@ -206,11 +228,11 @@ filesystem is at least 32 MiB smaller than the root partition. If it is,
 the filesystem is not shrunk. In particular, re-running
 <strong>encryptroot.asahi</strong> with the same arguments as a previous
 run will not resize the root filesystem.</p>
-</dd>
-</dl>
 <p>In any case, filesystem resizing is <strong>never</strong> performed
 on either partially or fully encrypted <em>rootdisk</em>s, nor on their
 decrypted content.</p>
+</dd>
+</dl>
 <dl>
 <dt><strong>2. Full-disk encryption</strong></dt>
 <dd>
@@ -219,18 +241,18 @@ encryption step was already attempted on <em>rootdisk</em>. If it
 determines that the encryption step was interrupted while in progress,
 it tries to resume it and bring it to completion. It does so by
 re-executing</p>
-</dd>
-</dl>
 <p># <strong>cryptsetup reencrypt --encrypt --reduce-device-size
 32M</strong> <em>rootdisk</em></p>
 <p>(see <strong>cryptsetup-reencrypt</strong>(8) for the relevant
-documentation). Under normal circumstances, no data corruption will
+documentation). Under normal circumstances, no data corruption should
 result from re-running the command.</p>
 <p>If, at startup, <strong>encryptroot.asahi</strong> detects that
 <em>rootdisk</em> is fully encrypted, for good measure it asks whether
 you picked the wrong disk. If you tell it to continue, it assumes that
 you're trying to resume the process from a later step, and that the root
 disk you picked is the same one you used in the previous steps.</p>
+</dd>
+</dl>
 <dl>
 <dt><strong>3. /etc/crypttab and grub (chroot)</strong></dt>
 <dd>
@@ -240,11 +262,15 @@ partition was already registered with <strong>/etc/crypttab</strong> and
 If the encrypted root partition was registered with the boot partition's
 grub files, it doesn't run <strong>grub2-mkconfig</strong>.</p>
 </dd>
+</dl>
+<dl>
 <dt><strong>4. initramfs (chroot)</strong></dt>
 <dd>
 <p>The initramfs is always recreated. This is a routine operation and
 will not cause issues under normal circumstances.</p>
 </dd>
+</dl>
+<dl>
 <dt><strong>NOTE</strong></dt>
 <dd>
 <p>Resuming the encryption process from the <strong>Full-disk
@@ -265,10 +291,11 @@ root disk password one additional time.</p>
 <p>Bug tracker:
 &lt;https://gitlab.com/noisycoil/encryptroot-asahi&gt;.</p>
 <h1>COPYRIGHT</h1>
-<p>Copyright (c) 2023 NoisyCoil &lt;noisycoil@tutanota.com&gt;. License:
-MIT &lt;https://mit-license.org&gt;.</p>
+<p>Copyright (c) 2023-2024 NoisyCoil &lt;noisycoil@tutanota.com&gt;.
+License: MIT &lt;https://mit-license.org&gt;.</p>
 <h1>SEE ALSO</h1>
 <p><strong>btrfs-filesystem</strong>(8),
 <strong>cryptsetup-reencrypt</strong>(8), <strong>crypttab</strong>(5),
 <strong>dracut</strong>(8), <strong>grub2-mkconfig</strong>(8),
-<strong>resize2fs</strong>(8).</p>
+<strong>resize2fs</strong>(8), <strong>update-grub</strong>(8),
+<strong>update-initramfs</strong>(8).</p>

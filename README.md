@@ -16,4 +16,4 @@ The encryption procedure followed by **encryptroot.asahi** is largely taken from
 
 ## Copyright
 
-Copyright (c) 2023 NoisyCoil (<noisycoil@tutanota.com>). License: MIT (<https://mit-license.org>).
+Copyright (c) 2023-2024 NoisyCoil (<noisycoil@tutanota.com>). License: MIT (<https://mit-license.org>).

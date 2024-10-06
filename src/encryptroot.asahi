@@ -5,7 +5,7 @@ set -e
 THIS_SCRIPT_NAME="encryptroot.asahi"
 
 print_usage() {
-    echo "Usage: $THIS_SCRIPT_NAME [ --boot-label BOOT_LABEL ] [ -d | --device-name DEVICE_NAME ] [ --ext4 ] [ -h | --help ] [ --no-subvols ] [ --root-label ROOT_LABEL ]  [ -v | --verbose ] ROOTDISK BOOTDISK"
+    echo "Usage: $THIS_SCRIPT_NAME [ --boot-label BOOT_LABEL ] [ -d | --device-name DEVICE_NAME ] [ --debian ] [ --ext4 ] [ -h | --help ] [ --no-subvols ] [ --root-label ROOT_LABEL ] [ -v | --verbose ] ROOTDISK BOOTDISK"
 }
 
 error() {
@@ -24,13 +24,22 @@ exit_error_with_usage() {
     exit 1
 }
 
-# Do not allow evironmentally-set {R,B}OOTLABEL_EXP: we must also set
-# {R,B}OOTLABEL_EXP_SET right for the checks to work as intended. For the
-# same reason, Do not allow evironmentally-set {R,B}OOTLABEL_EXP_SET.
-ROOTLABEL_EXP=""
-ROOTLABEL_EXP_SET=""
+# Forbid usage of arguments from environment
+BOOTDISK=""
 BOOTLABEL_EXP=""
+DEBIAN_OS=""
+ENCRYPTROOT_ASAHI_CHROOT_43F12E50=""
+EXT4_FS=""
+LUKS_MAPPED_DEVICE=""
+NO_BTRFS_SUBVOLS=""
+ROOTDISK=""
+ROOTLABEL_EXP=""
+VERBOSE=""
+
+# Shield other variables from environment
 BOOTLABEL_EXP_SET=""
+LUKS_UUID=""
+ROOTLABEL_EXP_SET=""
 
 PARGS=0
 while [ $# -gt 0 ]; do
@@ -39,16 +48,19 @@ while [ $# -gt 0 ]; do
         BOOTLABEL_EXP="$2"
         BOOTLABEL_EXP_SET="1"
         shift
-        shift
         ;;
     -d | --device-name)
-        LUKS_MAPPED_DEVICE="$2"
+        LUKS_MAPPED_DEVICE="$(echo "$2" | tr -d '[:space:]')"
         shift
-        shift
+        ;;
+    --debian)
+        DEBIAN_OS="1"
+        EXT4_FS="1"
+        NO_BTRFS_SUBVOLS="1"
         ;;
     --ext4)
         EXT4_FS="1"
-        shift
+        NO_BTRFS_SUBVOLS="1"
         ;;
     -h | --help)
         print_usage
@@ -56,22 +68,20 @@ while [ $# -gt 0 ]; do
         ;;
     # Magic chroot option. For internal use only, do not use manually.
     --mco-43f12e50)
-        ENCRYPTROOT_ASAHI_CHROOT_43F12E50=1
+        ENCRYPTROOT_ASAHI_CHROOT_43F12E50="1"
+        LUKS_UUID="$2"
         shift
         ;;
     --root-label)
         ROOTLABEL_EXP="$2"
         ROOTLABEL_EXP_SET="1"
         shift
-        shift
         ;;
     --no-subvols)
-        NO_SUBVOLS="1"
-        shift
+        NO_BTRFS_SUBVOLS="1"
         ;;
     -v | --verbose)
         VERBOSE="--verbose"
-        shift
         ;;
     -*)
         exit_error_with_usage "option $1 not recognized"
@@ -81,12 +91,10 @@ while [ $# -gt 0 ]; do
         0)
             ROOTDISK="$1"
             PARGS=1
-            shift
             ;;
         1)
             BOOTDISK="$1"
             PARGS=2
-            shift
             ;;
         2)
             exit_error_with_usage "too many arguments"
@@ -94,8 +102,19 @@ while [ $# -gt 0 ]; do
         esac
         ;;
     esac
+    shift
 done
-[ -z "$EXT4_FS" ] || NO_SUBVOLS="1"
+
+# TODO: if we want to support fedora-like and debian-like OSes,
+# OS_NAME should be passed on the command-line and/or discovered
+# from the root filesystem
+if [ -z "$DEBIAN_OS" ]; then
+    OS_NAME="fedora"
+else
+    OS_NAME="debian"
+fi
+
+LUKS_MAPPED_DEVICE="${LUKS_MAPPED_DEVICE:-"$OS_NAME-root"}"
 
 check_root() {
     [ "$(id -u)" = "0" ] || exit_error "this script must be run as root"
@@ -119,26 +138,36 @@ check_dependencies() {
     done
 }
 
+forbid_same_luks_mapped_device_name() {
+    # Debian's cryptsetup initramfs hooks require the encrypted device to be
+    # opened with the same name as its crypttab entry, so we must open it with
+    # that name and another mapped device with the same name cannot exist on
+    # the running system
+    if lsblk -nd "/dev/mapper/$LUKS_MAPPED_DEVICE" >/dev/null 2>&1; then
+        exit_error "/dev/mapper/$LUKS_MAPPED_DEVICE already exists, cannot use $LUKS_MAPPED_DEVICE as device name"
+    fi
+}
+
 explain_and_warn() {
     echo "*** WARNING ***"
     echo
-    echo "Please read carefully the following advisory before going any further."
+    echo "Please read the following advisory carefully before going any further."
     echo
-    echo "This script is not meant to be executed from your Fedora Asahi installation, but"
-    echo "rather from an external USB drive hosting an Asahi OS, or from a VM running on"
-    echo "macOS."
+    echo "This script is not meant to be executed from the Asahi Linux installation you"
+    echo "want to encrypt, but rather from an external USB drive hosting an Asahi OS, or"
+    echo "from a Linux VM running on macOS."
     echo
-    echo "If everything goes right, this script will encrypt your Fedora Asahi root"
-    echo "partition without deleting its contents. The script has safeguards to prevent"
-    echo "itself from messing around with the macOS partitions (e.g. it checks that the"
-    echo "root and boot partitions have the expected filesystem and content), but other"
-    echo "than that, in general, it is by no means 100% foolproof."
+    echo "If everything goes right, this script will encrypt your Asahi root partition"
+    echo "without deleting its contents. The script has safeguards to prevent itself from"
+    echo "messing around with the macOS partitions (e.g. it checks that the root and boot"
+    echo "partitions have the expected filesystem and content), but other than this, in"
+    echo "general, it is not 100% foolproof."
     echo "You as the user of this script are expected to be able to manually recover from"
     echo "an inconsistent state in which it may leave your system. In principle, manual"
-    echo "recovery is possible at every steps of the process. Read the manpage for more"
+    echo "recovery is possible at every step of the process. Read the manpage for more"
     echo "information."
     echo
-    echo "Unless you've just installed Fedora Asahi, backup your system before going ahead."
+    echo "Unless you've just installed Asahi Linux, backup your system before going ahead."
     echo "If you are not able to manually recover from failure, don't run this script."
     echo "By running this script you agree not to hold its author accountable for any loss"
     echo "of data or any other form of damage resulting from its use."
@@ -148,9 +177,11 @@ explain_and_warn() {
 }
 
 rootdisk_check() {
-    ROOTLABEL="$(lsblk -ndo LABEL "$ROOTDISK" 2>/dev/null)"
-    [ "$ROOTLABEL_EXP" = "" ] && [ "$ROOTLABEL_EXP_SET" != "1" ] && ROOTLABEL_EXP="fedora"
-    [ "$ROOTLABEL" = "$ROOTLABEL_EXP" ] || exit_error "expected root disk label '$ROOTLABEL_EXP', found '$ROOTLABEL'"
+    if [ -z "$DEBIAN_OS" ] || [ "$ROOTLABEL_EXP_SET" = "1" ]; then
+        [ "$ROOTLABEL_EXP" = "" ] && [ "$ROOTLABEL_EXP_SET" != "1" ] && ROOTLABEL_EXP="fedora"
+        ROOTLABEL="$(lsblk -ndo LABEL "$ROOTDISK" 2>/dev/null)"
+        [ "$ROOTLABEL" = "$ROOTLABEL_EXP" ] || exit_error "expected root disk label '$ROOTLABEL_EXP', found '$ROOTLABEL'"
+    fi
     for MNTPOINT in $(findmnt -no TARGET "$ROOTDISK" 2>/dev/null); do
         [ "$MNTPOINT" = "/" ] && exit_error "cannot encrypt root disk currently mounted on /"
     done
@@ -158,31 +189,43 @@ rootdisk_check() {
     [ -z "$VERBOSE" ] || echo "Checking root disk content..."
     TMPDIR="$(mktemp -d)"
     mount "$ROOTDISK" "$TMPDIR" || exit_error "could not mount root disk $ROOTDISK for preliminary checks"
-    if [ -z "$NO_SUBVOLS" ]; then
+    if [ -z "$NO_BTRFS_SUBVOLS" ]; then
         ROOTSUBVOLS="$(btrfs subvolume list "$TMPDIR" 2>/dev/null | rev | cut -d" " -f1 | rev | sort | tr \[:space:\] " ")"
         ROOTDIR="$TMPDIR/root"
     else
         ROOTDIR="$TMPDIR"
     fi
     [ -f "$ROOTDIR/etc/default/grub" ] && GRUB2_DEFAULT_FILE_FOUND=1
-    [ -L "$ROOTDIR/etc/grub2.cfg" ] && GRUB2_ETC_LINK_FOUND=1
-    [ -f "$ROOTDIR/usr/sbin/grub2-mkconfig" ] && GRUB2_MKCONFIG_FOUND=1
-    [ -f "$ROOTDIR/usr/bin/dracut" ] && DRACUT_FOUND=1
+    if [ -z "$DEBIAN_OS" ]; then
+        [ -L "$ROOTDIR/etc/grub2.cfg" ] && GRUB2_ETC_LINK_FOUND=1
+        [ -f "$ROOTDIR/usr/sbin/grub2-mkconfig" ] && GRUB2_MKCONFIG_FOUND=1
+        [ -f "$ROOTDIR/usr/bin/dracut" ] && DRACUT_FOUND=1
+    else
+        [ -f "$ROOTDIR/etc/debian_version" ] && DEB_VERSION_FOUND=1
+        [ -f "$ROOTDIR/usr/sbin/update-grub" ] && UPDATE_GRUB_FOUND=1
+        [ -f "$ROOTDIR/usr/sbin/update-initramfs" ] && UPDATE_INITRAMFS_FOUND=1
+    fi
     [ -f "$ROOTDIR/usr/sbin/cryptsetup" ] && CRYPTSETUP_FOUND=1
     sleep 2
     umount "$TMPDIR" || exit_error "could not unmount root disk $ROOTDISK after preliminary checks"
     rm -df "$TMPDIR" || true
     unset ROOTDIR TMPDIR
-    if [ -z "$NO_SUBVOLS" ]; then
+    if [ -z "$NO_BTRFS_SUBVOLS" ]; then
         case "$ROOTSUBVOLS" in
         *home*root*) ;;
         *) exit_error "could not find root and home subvolumes in root disk btrfs filesystem" ;;
         esac
     fi
     [ "$GRUB2_DEFAULT_FILE_FOUND" = "1" ] || exit_error "could not find /etc/default/grub in root disk filesystem"
-    [ "$GRUB2_ETC_LINK_FOUND" = "1" ] || exit_error "could not find /etc/grub2.cfg in root disk filesystem"
-    [ "$GRUB2_MKCONFIG_FOUND" = "1" ] || exit_error "could not find /usr/sbin/grub2-mkconfig in root disk filesystem"
-    [ "$DRACUT_FOUND" = "1" ] || exit_error "could not find /usr/bin/dracut in root disk filesystem"
+    if [ -z "$DEBIAN_OS" ]; then
+        [ "$GRUB2_ETC_LINK_FOUND" = "1" ] || exit_error "could not find /etc/grub2.cfg in root disk filesystem"
+        [ "$GRUB2_MKCONFIG_FOUND" = "1" ] || exit_error "could not find /usr/sbin/grub2-mkconfig in root disk filesystem"
+        [ "$DRACUT_FOUND" = "1" ] || exit_error "could not find /usr/bin/dracut in root disk filesystem"
+    else
+        [ "$DEB_VERSION_FOUND" = "1" ] || exit_error "could not find /etc/debian_version in root disk filesystem"
+        [ "$UPDATE_GRUB_FOUND" = "1" ] || exit_error "could not find /usr/sbin/update-grub in root disk filesystem"
+        [ "$UPDATE_INITRAMFS_FOUND" = "1" ] || exit_error "could not find /usr/sbin/initramfs in root disk filesystem"
+    fi
     [ "$CRYPTSETUP_FOUND" = "1" ] || exit_error "could not find /usr/sbin/cryptsetup in root disk filesystem. If you selected the correct root disk, please install cryptsetup on the system you want to encrypt and rerun $THIS_SCRIPT_NAME"
 }
 
@@ -204,11 +247,15 @@ rootdisk_luks_check() {
         echo "trying to resume a previously interrupted operation, hit ENTER to continue."
         read -r CONFIRM
     fi
-    echo "To make sure all things are in order, we're going to have a look inside your root"
-    echo "disk. Please enter your root disk password when asked to do so."
+    # I'm not really sure we need the rest of this function. If we are here it means
+    # we are trying to resume a previously interrupted operation. If we are resuming a
+    # previously interrupted operation the root disk checks were performed during a
+    # previous run. For now we keep it as a possibly unneeded extra precaution.
+    echo "To make sure everything is in order, we're going to have a look inside your"
+    echo "root disk. Please enter your root disk password when asked to do so."
     echo
     OLD_ROOTDISK="$ROOTDISK"
-    MAPPED_ROOTDISK="fedora-root-$(uuidgen | head -c 8)"
+    MAPPED_ROOTDISK="root-$(uuidgen | head -c 12)"
     ROOTDISK="/dev/mapper/$MAPPED_ROOTDISK"
     trap 'rootdisk_luks_check_cleanup; exit 1;' EXIT INT TERM QUIT HUP ABRT
     cryptsetup open "$OLD_ROOTDISK" "$MAPPED_ROOTDISK" || exit_error "could not decrypt LUKS device $OLD_ROOTDISK for preliminary checks"
@@ -218,22 +265,26 @@ rootdisk_luks_check() {
     trap - EXIT INT TERM QUIT HUP ABRT
     rootdisk_luks_check_cleanup
     ROOTDISK="$OLD_ROOTDISK"
-    unset OLD_ROOTDISK
+    unset OLD_ROOTDISK MAPPED_ROOTDISK ROOTFS2
 }
 
 bootdisk_check() {
-    BOOTLABEL="$(lsblk -ndo LABEL "$BOOTDISK" 2>/dev/null)"
-    [ "$BOOTLABEL_EXP" = "" ] && [ "$BOOTLABEL_EXP_SET" != "1" ] && BOOTLABEL_EXP="BOOT"
-    [ "$BOOTLABEL" = "$BOOTLABEL_EXP" ] || exit_error "expected boot disk label '$BOOTLABEL_EXP', found '$BOOTLABEL'"
+    if [ -z "$DEBIAN_OS" ] || [ "$BOOTLABEL_EXP_SET" = "1" ]; then
+        [ "$BOOTLABEL_EXP" = "" ] && [ "$BOOTLABEL_EXP_SET" != "1" ] && BOOTLABEL_EXP="BOOT"
+        BOOTLABEL="$(lsblk -ndo LABEL "$BOOTDISK" 2>/dev/null)"
+        [ "$BOOTLABEL" = "$BOOTLABEL_EXP" ] || exit_error "expected boot disk label '$BOOTLABEL_EXP', found '$BOOTLABEL'"
+    fi
     [ -z "$VERBOSE" ] || echo "Checking boot disk content..."
     TMPDIR="$(mktemp -d)"
     mount "$BOOTDISK" "$TMPDIR" || exit_error "could not mount boot disk $BOOTDISK for preliminary checks"
-    [ -d "$TMPDIR/grub2" ] && GRUB2_DIR_FOUND=1
+    GRUB_DIR="grub"
+    [ -n "$DEBIAN_OS" ] || GRUB_DIR="${GRUB_DIR}2"
+    [ -d "$TMPDIR/$GRUB_DIR" ] && GRUB_DIR_FOUND=1
     sleep 2
     umount "$TMPDIR" || exit_error "could not unmount boot disk $BOOTDISK after preliminary checks"
     rm -df "$TMPDIR" || true
-    unset TMPDIR
-    [ "$GRUB2_DIR_FOUND" = "1" ] || exit_error "could not find grub2 directory in boot disk filesystem"
+    unset TMPDIR GRUB_DIR
+    [ "$GRUB_DIR_FOUND" = "1" ] || exit_error "could not find $GRUB_DIR directory in boot disk filesystem"
 }
 
 check_disks() {
@@ -305,9 +356,13 @@ fs_shrink() {
     else
         ROOTPSIZE="$(lsblk -no SIZE --bytes "$ROOTDISK")"
         ROOTPSIZE="$((ROOTPSIZE / 1024 / 1024))"
-        FSSIZE_OP="$(dumpe2fs "$ROOTDISK" 2>/dev/null | grep "^Block \(size\|count\)" 2>/dev/null | tr -d ':' | tr -s '[:space:]' | cut -d ' ' -f3 | tr '[:space:]' '*' | sed 's|*$||g')"
-        echo "$FSSIZE_OP" | grep -E '[0-9]+\*[0-9]+' >/dev/null 2>&1 || exit_error "could not retrieve rootdisk filesystem size"
-        ROOTFSSIZE="$((("$FSSIZE_OP") / 1024 / 1024))"
+        ROOTFS_SIZE_DATA="$(dumpe2fs "$ROOTDISK" 2>/dev/null | grep "^Block \(size\|count\)" 2>/dev/null | tr -d ':' | tr -s '[:space:]' | cut -d ' ' -f3 | tr '[:space:]' ' ')"
+        ROOTFS_BCOUNT=$(echo "$ROOTFS_SIZE_DATA" | cut -d' ' -f1)
+        ROOTFS_BSIZE=$(echo "$ROOTFS_SIZE_DATA" | cut -d' ' -f2)
+        echo "$ROOTFS_BCOUNT" | grep -E '^[0-9]+$' >/dev/null 2>&1 || exit_error "could not retrieve root filesystem block count"
+        echo "$ROOTFS_BSIZE" | grep -E '^[0-9]+$' >/dev/null 2>&1 || exit_error "could not retrieve root filesystem block size"
+        ROOTFS_SIZE="$((ROOTFS_BCOUNT * ROOTFS_BSIZE))"
+        ROOTFSSIZE="$((ROOTFS_SIZE / 1024 / 1024))"
         echo "$ROOTFSSIZE" | grep -E '^[0-9]+$' >/dev/null 2>&1 || exit_error "could not retrieve rootdisk filesystem size"
         ROOTDSIZE="$((ROOTPSIZE - ROOTFSSIZE))"
         if [ "$ROOTDSIZE" -ge 32 ]; then
@@ -348,7 +403,8 @@ encrypt_root() {
             { incomplete_encryption_warning && exit_error "could not complete full-disk encryption step"; }
         trap - INT TERM QUIT HUP ABRT
     elif [ -z "$ENCRYPTROOT_ASAHI_SKIP_REENCRYPTION" ]; then
-        [ -z "$VERBOSE" ] || echo "Encrypting root disk..."
+        echo
+        echo "We are now going to encrypt the root disk."
         trap 'incomplete_encryption_warning; exit 1;' INT TERM QUIT HUP ABRT
         cryptsetup reencrypt --encrypt --reduce-device-size 32M "$ROOTDISK" ||
             { incomplete_encryption_warning && exit_error "could not complete full-disk encryption step"; }
@@ -356,18 +412,18 @@ encrypt_root() {
     fi
     LUKS_UUID="$(cryptsetup luksUUID "$ROOTDISK" 2>/dev/null)"
     [ -n "$LUKS_UUID" ] || exit_error "empty LUKS UUID;  could not complete full-disk encryption step"
-    export LUKS_UUID
-    LUKS_MAPPED_DEVICE="$(echo "$LUKS_MAPPED_DEVICE" | tr -d '[:space:]')"
-    LUKS_MAPPED_DEVICE="${LUKS_MAPPED_DEVICE:-"fedora-root"}"
-    LUKS_LOCAL_MAPPED_DEVICE="fedora-root-$(uuidgen | head -c 8)"
-    export LUKS_MAPPED_DEVICE LUKS_LOCAL_MAPPED_DEVICE
+    if [ -z "$DEBIAN_OS" ]; then
+        LUKS_LOCAL_MAPPED_DEVICE="root-$(uuidgen | head -c 12)"
+    else
+        LUKS_LOCAL_MAPPED_DEVICE="$LUKS_MAPPED_DEVICE"
+    fi
 }
 
 umount_vols() {
     sync
     findmnt "$MOUNTDIR/boot" >/dev/null 2>&1 &&
         { umount "$MOUNTDIR/boot" || error "could not unmount boot disk $BOOTDISK"; }
-    if [ -z "$NO_SUBVOLS" ]; then
+    if [ -z "$NO_BTRFS_SUBVOLS" ]; then
         findmnt "$MOUNTDIR/home" >/dev/null 2>&1 &&
             { umount "$MOUNTDIR/home" || error "could not unmount home subvolume of root disk $ROOTDISK"; }
         PMSG="root subvolume of "
@@ -387,14 +443,14 @@ mount_vols() {
     trap 'umount_vols; exit 1;' EXIT INT TERM QUIT HUP ABRT
     MOUNTDIR="$(mktemp -d)"
     cryptsetup open "$ROOTDISK" "$LUKS_LOCAL_MAPPED_DEVICE" || exit_error "could not decrypt LUKS device $ROOTDISK for carrying out the chroot steps"
-    if [ -z "$NO_SUBVOLS" ]; then
+    if [ -z "$NO_BTRFS_SUBVOLS" ]; then
         PMSG="root subvolume of "
         ROOTSUBVOLOPT="-o subvol=root"
     fi
     # shellcheck disable=2086
     mount $ROOTSUBVOLOPT "/dev/mapper/$LUKS_LOCAL_MAPPED_DEVICE" "$MOUNTDIR" ||
         exit_error "could not mount ${PMSG}decrypted root disk /dev/mapper/$LUKS_LOCAL_MAPPED_DEVICE for carrying out the chroot steps"
-    if [ -z "$NO_SUBVOLS" ]; then
+    if [ -z "$NO_BTRFS_SUBVOLS" ]; then
         mount -o subvol=home "/dev/mapper/$LUKS_LOCAL_MAPPED_DEVICE" "$MOUNTDIR/home" ||
             exit_error "could not mount home subvolume of decrypted root disk /dev/mapper/$LUKS_LOCAL_MAPPED_DEVICE for carrying out the chroot steps"
     fi
@@ -418,8 +474,9 @@ clone_self() {
 
 run_chroot() {
     [ -z "$VERBOSE" ] || echo "Chrooting into the root disk..."
+    [ -z "$DEBIAN_OS" ] || DEBIAN_ARG="--debian"
     # shellcheck disable=2086
-    arch-chroot "$MOUNTDIR" "/$THIS_SCRIPT_NAME" --mco-43f12e50 $VERBOSE
+    arch-chroot "$MOUNTDIR" "/$THIS_SCRIPT_NAME" --mco-43f12e50 "$LUKS_UUID" --device-name "$LUKS_MAPPED_DEVICE" $DEBIAN_ARG $VERBOSE
     trap - EXIT INT TERM QUIT HUP ABRT
 }
 
@@ -441,24 +498,36 @@ chroot_update_grub() {
             echo "GRUB_CMDLINE_LINUX_DEFAULT=\"rd.luks.uuid=$LUKS_UUID\"" >>/etc/default/grub
         fi
     fi
-    GRUBFILE="$(readlink -f /etc/grub2.cfg)"
-    if ! { grep "$LUKS_UUID" "$GRUBFILE" >/dev/null 2>&1 && grep -R "$LUKS_UUID" "/boot/loader/entries" >/dev/null 2>&1; }; then
-        [ -z "$VERBOSE" ] || echo "Updating grub configuration..."
-        grub2-mkconfig -o "$GRUBFILE"
+    if [ -z "$DEBIAN_OS" ]; then
+        GRUBFILE="$(readlink -f /etc/grub2.cfg)"
+        if ! { grep "$LUKS_UUID" "$GRUBFILE" >/dev/null 2>&1 && grep -R "$LUKS_UUID" "/boot/loader/entries" >/dev/null 2>&1; }; then
+            [ -z "$VERBOSE" ] || echo "Updating grub configuration..."
+            grub2-mkconfig -o "$GRUBFILE"
+        fi
+    else
+        if ! grep "$LUKS_UUID" /boot/grub/grub.cfg >/dev/null 2>&1; then
+            [ -z "$VERBOSE" ] || echo "Updating grub configuration..."
+            update-grub
+        fi
     fi
 }
 
 chroot_update_initramfs() {
     echo
     [ -z "$VERBOSE" ] || echo "Updating initramfs..."
-    # shellcheck disable=2086
-    dracut --regenerate-all --force $VERBOSE
+    if [ -z "$DEBIAN_OS" ]; then
+        # shellcheck disable=2086
+        dracut --regenerate-all --force $VERBOSE
+    else
+        LC_ALL=C update-initramfs -u -k all
+    fi
 }
 
 if [ -z "$ENCRYPTROOT_ASAHI_CHROOT_43F12E50" ]; then
     check_root
     check_arguments
     check_dependencies
+    [ -z "$DEBIAN_OS" ] || forbid_same_luks_mapped_device_name
     explain_and_warn
     check_disks
 
