@@ -104,6 +104,7 @@ check_root() {
 check_arguments() {
     [ -n "$ROOTDISK" ] || exit_error "missing mandatory argument ROOTDISK"
     [ -n "$BOOTDISK" ] || exit_error "missing mandatory argument BOOTDISK"
+    [ "$ROOTDISK" != "$BOOTDISK" ] || exit_error "ROOTDISK must be different from BOOTDISK"
 }
 
 check_dependencies() {
