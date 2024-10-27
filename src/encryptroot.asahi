@@ -169,6 +169,7 @@ rootdisk_check() {
     [ -f "$ROOTDIR/usr/sbin/grub2-mkconfig" ] && GRUB2_MKCONFIG_FOUND=1
     [ -f "$ROOTDIR/usr/bin/dracut" ] && DRACUT_FOUND=1
     [ -f "$ROOTDIR/usr/sbin/cryptsetup" ] && CRYPTSETUP_FOUND=1
+    sleep 2
     umount "$TMPDIR" || exit_error "could not unmount root disk $ROOTDISK after preliminary checks"
     rm -df "$TMPDIR" || true
     unset ROOTDIR TMPDIR
@@ -228,6 +229,7 @@ bootdisk_check() {
     TMPDIR="$(mktemp -d)"
     mount "$BOOTDISK" "$TMPDIR" || exit_error "could not mount boot disk $BOOTDISK for preliminary checks"
     [ -d "$TMPDIR/grub2" ] && GRUB2_DIR_FOUND=1
+    sleep 2
     umount "$TMPDIR" || exit_error "could not unmount boot disk $BOOTDISK after preliminary checks"
     rm -df "$TMPDIR" || true
     unset TMPDIR
@@ -235,6 +237,7 @@ bootdisk_check() {
 }
 
 check_disks() {
+    sleep 2
     # Root disk checks
     lsblk -nd "$ROOTDISK" >/dev/null 2>&1 || exit_error "root disk $ROOTDISK not found"
     [ -z "$VERBOSE" ] || echo "Checking root disk filesystem layout..."
@@ -316,6 +319,7 @@ fs_shrink() {
             resize2fs "$ROOTDISK" "${NEW_ROOTFSSIZE}M" || exit_error "could not shrink the root disk ext4 filesystem to make room for the LUKS headers"
         fi
     fi
+    sync
     unset SKIP_MESSAGE SHRINK_MESSAGE
 }
 
@@ -360,6 +364,7 @@ encrypt_root() {
 }
 
 umount_vols() {
+    sync
     findmnt "$MOUNTDIR/boot" >/dev/null 2>&1 &&
         { umount "$MOUNTDIR/boot" || error "could not unmount boot disk $BOOTDISK"; }
     if [ -z "$NO_SUBVOLS" ]; then
