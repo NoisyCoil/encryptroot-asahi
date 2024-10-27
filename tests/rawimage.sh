@@ -38,16 +38,23 @@ $PASSWORD
 $PASSWORD
 EOF
 
+echo
+echo "Finished encryption. Starting tests."
+
 IMAGE_NUUID="fedora-root-$(uuidgen | head -c 8)"
 
 lsblk -ndo FSTYPE "$ROOTLOOP" | grep crypto_LUKS >/dev/null 2>&1 || exit_error "unencrypted root disk"
 sudo cryptsetup luksDump "$ROOTLOOP" | grep -E "Requirements:\s*online-reencrypt" >/dev/null 2>&1 && exit_error "incomplete root disk encryption"
+
+echo "Check: root disk encryption is complete."
 
 LUKS_UUID="$(sudo cryptsetup luksUUID "$ROOTLOOP")"
 
 sudo cryptsetup open "$ROOTLOOP" "$IMAGE_NUUID" <<EOF
 $PASSWORD
 EOF
+
+echo "Check: root disk can be decrypted."
 
 MNTDIR="$(mktemp -d)"
 sudo mount -o subvol=root "/dev/mapper/$IMAGE_NUUID" "$MNTDIR"
@@ -60,6 +67,8 @@ done
 sudo grep -R "$LUKS_UUID" "$MNTDIR/boot/loader/entries" >/dev/null 2>&1 || exit_error "luksUUID not in /boot/loader/entries/"
 
 trap - EXIT
+
+echo "Check: luksUUID found in config files."
 
 cleanup
 echo
